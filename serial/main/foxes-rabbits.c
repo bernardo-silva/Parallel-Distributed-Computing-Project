@@ -4,14 +4,14 @@
 // #include <worldGen.h>
 #include <omp.h>
 
-#define EMPTY  ' '
-#define ROCK   '*'
-#define RABBIT 'R'
-#define FOX    'F'
+#define EMPTY  0//' '
+#define ROCK   1//'*'
+#define RABBIT 2//'R'
+#define FOX    3//'F'
 
 
 struct Entity{
-    char type;
+    int type;
     unsigned int age;
     unsigned int starve;
     unsigned int moved;
@@ -34,7 +34,7 @@ struct Environment {
 } env;
 
 int position_empty(int i, int j) {
-    return env.board[i][j].type  == EMPTY;
+    return !env.board[i][j].type;
 }
 int position_rabbit(int i, int j) {
     return env.board[i][j].type == RABBIT;
@@ -108,23 +108,25 @@ void generate_world(char *argv[]){
 }
 
 void print_board(){
+    char * labels = " *RF";
     printf("-----------------\n");
     for(int i=0; i<env.M; i++){
         printf("|");
         for(int j=0; j<env.N; j++){
-            printf(" %c |", env.board[i][j].type);
+            printf(" %c |", labels[env.board[i][j].type]);
         }
         printf("\n");
     }
     printf("-----------------\n");
 }
 void print_temp_board(){
+    char * labels = " *RF";
     printf("-----------------\n");
     for(int i=0; i<env.M; i++){
         printf("|");
         for(int j=0; j<env.N; j++){
             printf(" %c %d %d %d|",
-                   env.temp_board[i][j].type,
+                   labels[env.temp_board[i][j].type],
                    env.temp_board[i][j].age,
                    env.temp_board[i][j].starve,
                    env.temp_board[i][j].moved);
@@ -193,27 +195,24 @@ void check_conflict(int k, int l, struct Entity* ent){
 
     //Do nothing if previous was rock or empty (rock should never happen)
     if(previous->type == EMPTY || previous->type == ROCK) return;
-    // printf("Conflict found \nprev: %c new: %c\n"
-           // ,previous->type,ent->type);
 
     // Check if they are the same time and pick the one with the highest age
     if(previous->type == ent->type){
-        if(ent->type == FOX && ent->starve != previous->starve){
-            ent->starve = (ent->starve > previous->starve)?ent->starve:previous->starve;
-            ent->age = (ent->starve > previous->starve)?ent->age:previous->age;
-            return;
+        if(ent->type == FOX){
+            if(!ent->starve || !previous->starve) ent->starve = 0;
+            if(ent->age == previous->age){
+                ent->starve = (ent->starve < previous->starve)?ent->starve:previous->starve;
+                return;
+            }
         }
         ent->age = (ent->age > previous->age)?ent->age:previous->age;
         return;
     }
     //If not, pick the fox
-    // printf("Conflict of rabbit fox found \nprev: %c new: %c\n"
-    //        ,previous->type,ent->type);
-    // printf("\n%c\n\n",ent->type);
     if(previous->type == FOX){
         *ent = *previous;
-        ent->starve = 0;
     }
+    ent->starve = 0;
 
     return;
 }
@@ -222,7 +221,7 @@ void move_entity(int i, int j){
     int k = 0 , l = 0;
     struct Entity *ent = &env.board[i][j];
     struct Entity new = env.board[i][j];
-    char type = ent->type;
+    int type = ent->type;
 
     // Do nothing if rock or empty or if moved previously
     if (type == ROCK || type == EMPTY || ent->moved) return;
@@ -245,9 +244,7 @@ void move_entity(int i, int j){
     if (!new.moved) return;
 
     //If it reached the breading age, reset age and keep a copy there
-    // printf("\n ent age %d\n", ent->age);
     if(ent->age >= (type==RABBIT?env.rabbits_breeding:env.foxes_breeding)){
-        // printf("%c at %d %d bred\n", ent->type, i,j);
         new.age = 0;
         env.temp_board[i][j] = (struct Entity) {.type = type, .age=0, .starve=0, .moved=0};
     }
@@ -256,16 +253,45 @@ void move_entity(int i, int j){
         env.temp_board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
     }
     check_conflict(k, l, &new);
-    // printf("%d %d <- %c\n",k,l, ent->type);
     env.temp_board[k][l] = new;
+}
+
+int kill_fox(int i, int j){
+    if(env.temp_board[i][j].starve >= env.foxes_starvation) {
+        env.temp_board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+        env.board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+        return 1;
+    }
+    return 0;
 }
 
 void reset_generation(){
     for(int i=0; i<env.M; i++){
         for(int j=0; j<env.N; j++){
-            if (env.temp_board[i][j].type == ROCK || env.temp_board[i][j].type == EMPTY) continue;
+            switch (env.temp_board[i][j].type) {
+                case ROCK:
+                    continue;
+                case FOX:
+                    if(kill_fox(i, j)) continue;
+                    break;
+                case EMPTY:
+                    env.board[i][j] = env.temp_board[i][j];
+                    continue;
+                default:
+                    break;
+            }
             env.temp_board[i][j].moved = 0;
+            ++env.temp_board[i][j].age;
             env.board[i][j] = env.temp_board[i][j];
+            // env.board[i][j].type = env.temp_board[i][j].type;
+            // env.board[i][j].age = env.temp_board[i][j].age;
+            // env.board[i][j].starve = env.temp_board[i][j].starve;
+            // env.board[i][j].moved = 0;
+            // if (env.temp_board[i][j].type == ROCK || env.temp_board[i][j].type == EMPTY) continue;
+            // if(env.temp_board[i][j].type == FOX) 
+            //     if(env.temp_board[i][j].starve >= env.foxes_starvation) 
+            //         env.temp_board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+
         }
     }
 }
@@ -273,44 +299,37 @@ void reset_generation(){
 void increase_ages(){
     for(int i=0; i<env.M; i++){
         for(int j=0; j<env.N; j++){
-            if (env.board[i][j].type == ROCK || env.board[i][j].type == EMPTY) continue;
-                env.board[i][j].age++;
-                env.temp_board[i][j].age++;
+            if (env.board[i][j].type == EMPTY || env.board[i][j].type == ROCK) continue;
+            ++env.board[i][j].age;
+            ++env.temp_board[i][j].age;
         }
     }
 }
 
-void kill_foxes(){
-    for(int i=0; i<env.M; i++){
-        for(int j=0; j<env.N; j++){
-            if(env.temp_board[i][j].type != FOX) continue; 
-            if(env.temp_board[i][j].starve >= env.foxes_starvation) 
-                env.temp_board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
-        }
-    }
-}
 
 void run_simulation(){
     // Board -> Estatico
     // Temp - board -> Editavel
 
-    // Save current board
+    // Save current board and increase ages
     for(int i=0; i<env.M; i++){
-        for(int j=0; j<env.N; j++)
+        for(int j=0; j<env.N; j++){
             env.temp_board[i][j] = env.board[i][j];
+            if (env.temp_board[i][j].type == ROCK || env.temp_board[i][j].type == EMPTY) continue;
+            env.board[i][j].age++;
+            env.temp_board[i][j].age++;
+        }
     }
 
     for(int gen = 0; gen<env.generations; ++gen){
-        increase_ages();
-        // increase_ages();
-        printf("--------------\n");
-        printf("Generation %d      \n", gen);
-        printf("--------------\n");
-
-
-        printf("\033[0;34m");
-        print_temp_board();
-        printf("\033[0m");
+        // printf("--------------\n");
+        // printf("Generation %d      \n", gen);
+        // printf("--------------\n");
+        //
+        //
+        // printf("\033[0;34m");
+        // print_temp_board();
+        // printf("\033[0m");
 
         // Update red
         for(int i=0; i<env.M; i++){
@@ -318,10 +337,10 @@ void run_simulation(){
                 move_entity(i, j);
             }
         }
-        printf("Updated red\n");
-        printf("\033[0;31m");
-        print_temp_board();
-        printf("\033[0m");
+        // printf("Updated red\n");
+        // printf("\033[0;31m");
+        // print_temp_board();
+        // printf("\033[0m");
 
         for(int i=0; i<env.M; i++){
             for(int j=0; j<env.N; j++)
@@ -336,16 +355,7 @@ void run_simulation(){
         // printf("Updated black\n");
         // print_temp_board();
 
-
-        kill_foxes();
-
-        for(int i=0; i<env.M; i++){
-            for(int j=0; j<env.N; j++)
-                env.board[i][j] = env.temp_board[i][j];
-        }
-        // printf("End of generation %d\n",gen);
         reset_generation();
-        // print_temp_board();
     }
     print_results();
 }
@@ -358,28 +368,13 @@ int main (int argc, char *argv[])
         return -1;
     }
     generate_world(argv);
-    printf("Generated world\n");
-    print_board();
-
-    // struct Entity a = {.type=EMPTY, .age=0, .starve=0, .moved=0};
-    // struct Entity b = {.type=EMPTY, .age=0, .starve=0, .moved=0};
 
     double exec_time = -omp_get_wtime();
-    // for (double i=0; i<1e10; i++) {
-        // b = (struct Entity) {.type=EMPTY, .age=i, .starve=0, .moved=0};;
-        // b.type = EMPTY;
-        // b.age = 0;
-        // b.starve=0;
-        // b.moved=0;
-    // }
 
     run_simulation();
 
     exec_time  += omp_get_wtime();
     fprintf(stderr, "%.8fs\n", exec_time);
-    // return 0;
-    // print_board();
-
 
     //Free memory
     for (int i = 0; i < env.M; i++) {
