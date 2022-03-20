@@ -13,10 +13,10 @@
 
 
 typedef struct Entity{
-    unsigned int type;
-    unsigned int age;
-    unsigned int starve;
-    unsigned int moved;
+    int type;
+    int age;
+    int starve;
+    int moved;
 } Entity;
 
 typedef struct Environment {
@@ -35,7 +35,7 @@ typedef struct Environment {
     Entity** temp_board;
 } Environment;
 
-int position_empty(Environment* const env, int i, int j);
+int position_empty(Environment* env, int i, int j);
 
 int position_rabbit(Environment* env, int i, int j);
 

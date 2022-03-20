@@ -283,15 +283,6 @@ void reset_generation(){
             env.temp_board[i][j].moved = 0;
             ++env.temp_board[i][j].age;
             env.board[i][j] = env.temp_board[i][j];
-            // env.board[i][j].type = env.temp_board[i][j].type;
-            // env.board[i][j].age = env.temp_board[i][j].age;
-            // env.board[i][j].starve = env.temp_board[i][j].starve;
-            // env.board[i][j].moved = 0;
-            // if (env.temp_board[i][j].type == ROCK || env.temp_board[i][j].type == EMPTY) continue;
-            // if(env.temp_board[i][j].type == FOX) 
-            //     if(env.temp_board[i][j].starve >= env.foxes_starvation) 
-            //         env.temp_board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
-
         }
     }
 }

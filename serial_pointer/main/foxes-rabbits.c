@@ -132,6 +132,7 @@ void reset_generation(struct Environment* env){
                     continue;
                 case ROCK:
                     continue;
+                    break;
                 case FOX:
                     if(kill_fox(env, i, j)) continue;
                     break;
