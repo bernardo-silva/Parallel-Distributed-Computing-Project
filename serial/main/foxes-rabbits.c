@@ -11,7 +11,7 @@
 
 
 struct Entity{
-    int type;
+    unsigned int type;
     unsigned int age;
     unsigned int starve;
     unsigned int moved;
@@ -34,7 +34,7 @@ struct Environment {
 } env;
 
 int position_empty(int i, int j) {
-    return !env.board[i][j].type;
+    return env.board[i][j].type == EMPTY;
 }
 int position_rabbit(int i, int j) {
     return env.board[i][j].type == RABBIT;
@@ -221,7 +221,7 @@ void move_entity(int i, int j){
     int k = 0 , l = 0;
     struct Entity *ent = &env.board[i][j];
     struct Entity new = env.board[i][j];
-    int type = ent->type;
+    unsigned int type = ent->type;
 
     // Do nothing if rock or empty or if moved previously
     if (type == ROCK || type == EMPTY || ent->moved) return;
@@ -292,16 +292,6 @@ void reset_generation(){
             //     if(env.temp_board[i][j].starve >= env.foxes_starvation) 
             //         env.temp_board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
 
-        }
-    }
-}
-
-void increase_ages(){
-    for(int i=0; i<env.M; i++){
-        for(int j=0; j<env.N; j++){
-            if (env.board[i][j].type == EMPTY || env.board[i][j].type == ROCK) continue;
-            ++env.board[i][j].age;
-            ++env.temp_board[i][j].age;
         }
     }
 }
