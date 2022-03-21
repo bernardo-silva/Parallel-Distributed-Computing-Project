@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
-// #include <worldGen.h>
+// #include <string.h>
 #include <omp.h>
-#include "../src/environment.h"
+#include "environment.h"
 
 #define EMPTY  0//' '
 #define ROCK   1//'*'
@@ -42,25 +41,21 @@ int choose_next_pos(struct Environment* env, int (*criteria)(), int i, int j, in
         moves[possible][1] = j+left;
         possible++;
     }
-    if(!possible) return 0;//{printf("Not possible\n"); return 0;}
+    if(!possible) return 0;
 
     int choice = (i * env->N + j)%possible;
-    // choice %= possible;
+
     *k = moves[choice][0];
     *l = moves[choice][1];
-    // printf("Moving %c on %d %d with possible %d and choice %d\n",
-           // env.board[i][j].type, i,j,possible, choice);
 
     return 1;
 }
 
-void check_conflict(struct Environment* env, int k, int l, struct Entity* ent){
+void check_conflict(struct Environment* env, int k, int l, Entity* ent){
     struct Entity *previous = &env->temp_board[k][l];
 
     //Do nothing if previous was rock or empty (rock should never happen)
     if(previous->type == EMPTY || previous->type == ROCK) return;
-    // printf("Conflict found \nprev: %c new: %c\n"
-           // ,previous->type,ent->type);
 
     // Check if they are the same type
     if(previous->type == ent->type){
@@ -84,10 +79,12 @@ void check_conflict(struct Environment* env, int k, int l, struct Entity* ent){
     return;
 }
 
-void move_entity(struct Environment* env, int i, int j){
+void move_entity(Environment* env, int i, int j){
     int k = 0 , l = 0;
+
     struct Entity *ent = &env->board[i][j];
     struct Entity new = env->board[i][j];
+
     int type = ent->type;
     int breed_age = 0;
 
@@ -113,11 +110,11 @@ void move_entity(struct Environment* env, int i, int j){
     }
     if(ent->age >= breed_age){
         new.age = 0;
-        env->temp_board[i][j] = (struct Entity) {.type = type, .age=0, .starve=0, .moved=0};
+        env->temp_board[i][j] = (Entity) {.type = type, .age=0, .starve=0, .moved=0};
     }
     else{
         //Otherwise, leave empty entity behind
-        env->temp_board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+        env->temp_board[i][j] = (Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
     }
     check_conflict(env, k, l, &new);
     env->temp_board[k][l] = new;
@@ -132,7 +129,6 @@ void reset_generation(struct Environment* env){
                     continue;
                 case ROCK:
                     continue;
-                    break;
                 case FOX:
                     if(kill_fox(env, i, j)) continue;
                     break;
@@ -147,14 +143,14 @@ void reset_generation(struct Environment* env){
 }
 
 void run_simulation(struct Environment* env){
-    // Board -> Estatico
-    // Temp - board -> Editavel
+    // Board -> Static
+    // Temp - board -> Edit
 
     // Save current board and increase ages
     for(int i=0; i<env->M; i++){
         for(int j=0; j<env->N; j++){
             env->board[i][j].age++;
-            env->temp_board[i][j] = env->board[i][j];
+            env->temp_board[i][j].age++;
         }
     }
 
@@ -193,13 +189,11 @@ int main (int argc, char *argv[])
         return -1;
     }
 
-    struct Environment env;
+    Environment env;
     generate_world(&env, argv);
+
     // printf("Generated world\n");
     // print_board();
-
-    // struct Entity a = {.type=EMPTY, .age=0, .starve=0, .moved=0};
-    // struct Entity b = {.type=EMPTY, .age=0, .starve=0, .moved=0};
 
     double exec_time = -omp_get_wtime();
 

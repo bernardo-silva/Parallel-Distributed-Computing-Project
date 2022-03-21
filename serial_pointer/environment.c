@@ -10,7 +10,7 @@
 #define FOX    3//'F'
 
 
-int position_empty(Environment* const env, int i, int j) {
+int position_empty(Environment* env, int i, int j) {
     return env->board[i][j].type == EMPTY;
 }
 int position_rabbit(Environment* env, int i, int j) {
@@ -18,6 +18,7 @@ int position_rabbit(Environment* env, int i, int j) {
 }
 void insert_animal(Environment* env, int i, int j, char atype) {
     env->board[i][j].type = atype;
+    env->temp_board[i][j].type = atype;
 }
 
 float r4_uni(uint32_t *seed)
@@ -66,6 +67,7 @@ void generate_world(Environment* env, char *argv[]){
         env->board[i] = malloc(env->N * sizeof(Entity));
         env->temp_board[i] = malloc(env->N * sizeof(Entity));
     }
+
     for (int i=0;i<env->M;i++){
         for (int j=0;j<env->N;j++){
             env->board[i][j].type = EMPTY;
@@ -87,8 +89,8 @@ void generate_world(Environment* env, char *argv[]){
 
 int kill_fox(Environment* env, int i, int j){
     if(env->temp_board[i][j].starve >= env->foxes_starvation) {
-        env->temp_board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
-        env->board[i][j] = (struct Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+        env->temp_board[i][j] = (Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+        env->board[i][j] = ( Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
         return 1;
     }
     return 0;

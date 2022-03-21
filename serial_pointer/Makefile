@@ -2,19 +2,19 @@ CC := gcc
 CCFLAGS := -O3 -fopenmp -Wall -g
 INCLUDE := ../src
 #--- VPATH contains the search path for the src files !
-VPATH := ../src:../main
+# VPATH := .
 #--- Now find & list all c files on directories
-SOURCES := $(wildcard ../src/*.c ../main/*.c)
+SOURCES := $(wildcard ./*.c)
 #--- Object files shouldn’t have the full path of
 #--- SOURCES when we replace the .cpp by .o !
-OBJECTS := $(addprefix ../bin/, $(notdir $(SOURCES:.c=.o)))
+OBJECTS := $(addprefix ./obj/, $(notdir $(SOURCES:.c=.o)))
 #####################################################
-all: ../bin/foxes-rabbits
-../bin/foxes-rabbits: $(OBJECTS)
+all: ./foxes-rabbits
+./foxes-rabbits: $(OBJECTS)
 	@echo $(OBJECTS)
 	$(CC) $(CCFLAGS) -o $@ $^ -I $(INCLUDE)
 #--- Now every .c file can easily be found from VPATH !
-../bin/%.o: %.c
+./obj/%.o: %.c
 	$(CC) $(CCFLAGS) -c $^ -o $@ -I $(INCLUDE)
 clean:
-	rm ../bin/*.o ../bin/foxes-rabbits
+	rm ./obj/*.o ./foxes-rabbits
