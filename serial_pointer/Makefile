@@ -1,6 +1,6 @@
 CC := gcc
-CCFLAGS := -O3 -fopenmp -Wall -g
-INCLUDE := ../src
+CCFLAGS := -O3 -fopenmp -Wall 
+INCLUDE := .
 #--- VPATH contains the search path for the src files !
 # VPATH := .
 #--- Now find & list all c files on directories
@@ -15,6 +15,7 @@ all: ./foxes-rabbits
 	$(CC) $(CCFLAGS) -o $@ $^ -I $(INCLUDE)
 #--- Now every .c file can easily be found from VPATH !
 ./obj/%.o: %.c
+	mkdir -p obj
 	$(CC) $(CCFLAGS) -c $^ -o $@ -I $(INCLUDE)
 clean:
 	rm ./obj/*.o ./foxes-rabbits
