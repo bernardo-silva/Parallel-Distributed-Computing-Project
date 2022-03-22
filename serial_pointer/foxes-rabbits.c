@@ -52,7 +52,7 @@ int choose_next_pos(struct Environment* env, int (*criteria)(), int i, int j, in
 }
 
 void check_conflict(struct Environment* env, int k, int l, Entity* ent){
-    struct Entity *previous = &env->temp_board[k][l];
+    Entity *previous = &env->temp_board[k][l];
 
     //Do nothing if previous was rock or empty (rock should never happen)
     if(previous->type == EMPTY || previous->type == ROCK) return;
@@ -82,8 +82,8 @@ void check_conflict(struct Environment* env, int k, int l, Entity* ent){
 void move_entity(Environment* env, int i, int j){
     int k = 0 , l = 0;
 
-    struct Entity *ent = &env->board[i][j];
-    struct Entity new = env->board[i][j];
+    Entity *ent = &env->board[i][j];
+    Entity new = env->board[i][j];
 
     int type = ent->type;
     int breed_age = 0;
@@ -99,12 +99,13 @@ void move_entity(Environment* env, int i, int j){
 
         case FOX:
             if(!(new.moved = choose_next_pos(env, position_rabbit, i, j, &k, &l))){
-                new.starve++;
+                // new.starve++;
                 if(!(new.moved = choose_next_pos(env, position_empty, i, j, &k, &l))){
-                    env->temp_board[i][j].starve++;
+                    // env->temp_board[i][j].starve++;
                     return;
                 }
             }
+            else new.starve = 0;
             breed_age = env->foxes_breeding;
             break;
     }
@@ -131,6 +132,7 @@ void reset_generation(struct Environment* env){
                     continue;
                 case FOX:
                     if(kill_fox(env, i, j)) continue;
+                    env->temp_board[i][j].starve++;
                     break;
                 default:
                     break;
@@ -151,6 +153,8 @@ void run_simulation(struct Environment* env){
         for(int j=0; j<env->N; j++){
             env->board[i][j].age++;
             env->temp_board[i][j].age++;
+            env->board[i][j].starve++;
+            env->temp_board[i][j].starve++;
         }
     }
 

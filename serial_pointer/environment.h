@@ -47,6 +47,8 @@ void generate_world(Environment* env, char *argv[]);
 
 int kill_fox(Environment* env, int i, int j);
 
+void print_temp_board( Environment* env);
+
 void print_results( Environment* env);
 
 #endif // !ENVIRONMENT

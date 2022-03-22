@@ -90,37 +90,39 @@ void generate_world(Environment* env, char *argv[]){
 int kill_fox(Environment* env, int i, int j){
     if(env->temp_board[i][j].starve >= env->foxes_starvation) {
         env->temp_board[i][j] = (Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
-        env->board[i][j] = ( Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+        env->board[i][j] = (Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
         return 1;
     }
     return 0;
 }
-// void print_board(){
-//     printf("-----------------\n");
-//     for(int i=0; i<env.M; i++){
-//         printf("|");
-//         for(int j=0; j<env.N; j++){
-//             printf(" %c |", env.board[i][j].type);
-//         }
-//         printf("\n");
-//     }
-//     printf("-----------------\n");
-// }
-// void print_temp_board(){
-//     printf("-----------------\n");
-//     for(int i=0; i<env.M; i++){
-//         printf("|");
-//         for(int j=0; j<env.N; j++){
-//             printf(" %c %d %d %d|",
-//                    env.temp_board[i][j].type,
-//                    env.temp_board[i][j].age,
-//                    env.temp_board[i][j].starve,
-//                    env.temp_board[i][j].moved);
-//         }
-//         printf("\n");
-//     }
-//     printf("-----------------\n");
-// }
+void print_board(Environment* env){
+    printf("-----------------\n");
+    for(int i=0; i<env->M; i++){
+        printf("|");
+        for(int j=0; j<env->N; j++){
+            printf(" %c |", env->board[i][j].type);
+        }
+        printf("\n");
+    }
+    printf("-----------------\n");
+}
+
+void print_temp_board(Environment* env){
+    printf("-----------------\n");
+    for(int i=0; i<env->M; i++){
+        printf("|");
+        for(int j=0; j<env->N; j++){
+            printf(" %c %d %d %d|",
+                   env->temp_board[i][j].type,
+                   env->temp_board[i][j].age,
+                   env->temp_board[i][j].starve,
+                   env->temp_board[i][j].moved);
+        }
+        printf("\n");
+    }
+    printf("-----------------\n");
+}
+
 void print_results(Environment* env){
     int rocks=0, rabbits=0, foxes=0;
     for(int i=0; i<env->M; i++){
