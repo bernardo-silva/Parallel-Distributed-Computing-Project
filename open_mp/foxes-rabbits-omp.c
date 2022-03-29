@@ -147,7 +147,13 @@ void run_simulation(struct Environment* env){
     int n, block_size;
     int* dummy;
 
-    #pragma omp parallel 
+    n = omp_get_max_threads() * 4;
+    printf("Found %d threads\n", n);
+
+    dummy = malloc((n+1)* sizeof(*dummy));
+    block_size = env->M/n;
+
+    #pragma omp parallel shared(n, block_size, dummy)
     {
     #pragma omp for 
     for(int i=0; i<env->M; i++){
@@ -159,52 +165,31 @@ void run_simulation(struct Environment* env){
         }
     }
 
-    #pragma omp master
-        {
-    n = omp_get_num_threads() * 4;
-    printf("Found %d threads\n", n);
-
-    dummy = malloc((n+1)* sizeof(*dummy));
-    block_size = env->M/n;
-        }
-
-    for(int gen = 0; gen<env->generations; ++gen){
+    for(int gen = 0; gen<env->generations; gen++){
         // Update red
         #pragma omp single
         {
             for(int k = 0; k<n; k+=2){
                 #pragma omp task  depend(out: dummy[k], dummy[k+1])
-                    {
-                        // printf("Executing task %d with k = %d\n",omp_get_thread_num(),k);
                 for(int i=k*block_size; i < (k+1)*block_size; i++){
                     for(int j=i%2; j<env->N; j+=2){
                         move_entity(env, i, j);
                     }
                 }
-                    // printf("Task %d with k = %d DONE\n",omp_get_thread_num(),k);
-            }
             }
             for(int k = 1; k<n; k+=2){
                 #pragma omp task  depend(out: dummy[k], dummy[k+1])
-                    {
-                        // printf("Executing task %d with k = %d\n",omp_get_thread_num(),k);
                 for(int i=k*block_size; i < (k+1)*block_size; i++){
                     for(int j=i%2; j<env->N; j+=2){
                         move_entity(env, i, j);
                     }
                 }
-                    // printf("Task %d with k = %d DONE\n",omp_get_thread_num(),k);
-            }
             }
             #pragma omp task  depend(out: dummy[n])
-                    {
-                    // printf("Executing task %d with k = %d\n",omp_get_thread_num(),n);
             for(int i=n*block_size; i < env->M; i++){
                 for(int j=i%2; j<env->N; j+=2){
                     move_entity(env, i, j);
                 }
-            }
-                    // printf("Task %d with k = %d DONE\n",omp_get_thread_num(),n);
             }
         #pragma omp taskwait
         }
@@ -217,8 +202,6 @@ void run_simulation(struct Environment* env){
             for(int j=0; j<env->N; j++)
                 env->board[i][j] = env->temp_board[i][j];
         }
-        #pragma omp barrier
-
         // printf("Generation %d, red\n",gen+1);
         // print_board(env);
         // Update black
