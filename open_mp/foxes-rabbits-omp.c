@@ -99,9 +99,7 @@ void move_entity(Environment* env, int i, int j){
 
         case FOX:
             if(!(new.moved = choose_next_pos(env, position_rabbit, i, j, &k, &l))){
-                // new.starve++;
                 if(!(new.moved = choose_next_pos(env, position_empty, i, j, &k, &l))){
-                    // env->temp_board[i][j].starve++;
                     return;
                 }
             }
@@ -149,7 +147,9 @@ void run_simulation(struct Environment* env){
     int n, block_size;
     int* dummy;
 
-#pragma omp parallel for //private(j)
+    #pragma omp parallel 
+    {
+    #pragma omp for 
     for(int i=0; i<env->M; i++){
         for(int j=0; j<env->N; j++){
             env->board[i][j].age++;
@@ -159,43 +159,56 @@ void run_simulation(struct Environment* env){
         }
     }
 
-    n = omp_get_max_threads() * 2;
+    #pragma omp master
+        {
+    n = omp_get_num_threads() * 4;
     printf("Found %d threads\n", n);
 
     dummy = malloc((n+1)* sizeof(*dummy));
     block_size = env->M/n;
+        }
 
     for(int gen = 0; gen<env->generations; ++gen){
-        #pragma omp parallel 
-        {
         // Update red
         #pragma omp single
         {
             for(int k = 0; k<n; k+=2){
                 #pragma omp task  depend(out: dummy[k], dummy[k+1])
+                    {
+                        // printf("Executing task %d with k = %d\n",omp_get_thread_num(),k);
                 for(int i=k*block_size; i < (k+1)*block_size; i++){
                     for(int j=i%2; j<env->N; j+=2){
                         move_entity(env, i, j);
                     }
                 }
+                    // printf("Task %d with k = %d DONE\n",omp_get_thread_num(),k);
+            }
             }
             for(int k = 1; k<n; k+=2){
-                #pragma omp task  depend(in: dummy[k], dummy[k+1])
-                // #pragma omp for //private(j)
+                #pragma omp task  depend(out: dummy[k], dummy[k+1])
+                    {
+                        // printf("Executing task %d with k = %d\n",omp_get_thread_num(),k);
                 for(int i=k*block_size; i < (k+1)*block_size; i++){
                     for(int j=i%2; j<env->N; j+=2){
                         move_entity(env, i, j);
                     }
                 }
+                    // printf("Task %d with k = %d DONE\n",omp_get_thread_num(),k);
             }
-            #pragma omp task  depend(inout: dummy[n], dummy[n+1])
+            }
+            #pragma omp task  depend(out: dummy[n])
+                    {
+                    // printf("Executing task %d with k = %d\n",omp_get_thread_num(),n);
             for(int i=n*block_size; i < env->M; i++){
                 for(int j=i%2; j<env->N; j+=2){
                     move_entity(env, i, j);
                 }
             }
+                    // printf("Task %d with k = %d DONE\n",omp_get_thread_num(),n);
+            }
         #pragma omp taskwait
         }
+            #pragma omp barrier
         
         // printf("Red updated\n");
 
@@ -204,6 +217,7 @@ void run_simulation(struct Environment* env){
             for(int j=0; j<env->N; j++)
                 env->board[i][j] = env->temp_board[i][j];
         }
+        #pragma omp barrier
 
         // printf("Generation %d, red\n",gen+1);
         // print_board(env);
@@ -220,7 +234,7 @@ void run_simulation(struct Environment* env){
                 }
             }
             for(int k = 1; k<n; k+=2){
-                #pragma omp task  depend(in: dummy[k], dummy[k+1])
+                #pragma omp task  depend(out: dummy[k], dummy[k+1])
                 // #pragma omp for //private(j)
                 for(int i=k*block_size; i < (k+1)*block_size; i++){
                     for(int j=(i+1)%2; j<env->N; j+=2){
@@ -228,7 +242,7 @@ void run_simulation(struct Environment* env){
                     }
                 }
             }
-            #pragma omp task  depend(inout: dummy[n], dummy[n+1])
+            #pragma omp task  depend(out: dummy[n])
             for(int i=n*block_size; i < env->M; i++){
                 for(int j=(i+1)%2; j<env->N; j+=2){
                     move_entity(env, i, j);
@@ -236,32 +250,12 @@ void run_simulation(struct Environment* env){
             }
         #pragma omp taskwait
         }
+            #pragma omp barrier
 
         // printf("Updated black\n");
             
     // #pragma omp single
-    // reset_generation(env);
-#pragma omp for //schedule(guided)
-    for(int i=0; i<env->M; i++){
-        for(int j=0; j<env->N; j++){
-            switch (env->temp_board[i][j].type) {
-                case EMPTY:
-                    env->board[i][j] = env->temp_board[i][j];
-                    continue;
-                case ROCK:
-                    continue;
-                case FOX:
-                    if(kill_fox(env, i, j)) continue;
-                    env->temp_board[i][j].starve++;
-                    break;
-                default:
-                    break;
-            }
-            env->temp_board[i][j].moved = 0;
-            env->temp_board[i][j].age++;
-            env->board[i][j] = env->temp_board[i][j];
-        }
-    }
+    reset_generation(env);
         }
 }
 }
