@@ -1,13 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-// #include <worldGen.h>
 #include <omp.h>
 
-#define EMPTY  0//' '
-#define ROCK   1//'*'
-#define RABBIT 2//'R'
-#define FOX    3//'F'
+#define EMPTY  0
+#define ROCK   1
+#define RABBIT 2
+#define FOX    3
 
 
 struct Entity{

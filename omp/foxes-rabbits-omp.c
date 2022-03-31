@@ -99,9 +99,7 @@ void move_entity(Environment* env, int i, int j){
 
         case FOX:
             if(!(new.moved = choose_next_pos(env, position_rabbit, i, j, &k, &l))){
-                // new.starve++;
                 if(!(new.moved = choose_next_pos(env, position_empty, i, j, &k, &l))){
-                    // env->temp_board[i][j].starve++;
                     return;
                 }
             }
@@ -122,6 +120,7 @@ void move_entity(Environment* env, int i, int j){
 }
 
 void reset_generation(struct Environment* env){
+#pragma omp for schedule(guided)
     for(int i=0; i<env->M; i++){
         for(int j=0; j<env->N; j++){
             switch (env->temp_board[i][j].type) {
@@ -145,10 +144,17 @@ void reset_generation(struct Environment* env){
 }
 
 void run_simulation(struct Environment* env){
-    // Board -> Static
-    // Temp - board -> Edit
+    int n, block_size;
+    int* dummy;
 
-    // Save current board and increase ages
+    n = omp_get_max_threads() * 4;
+
+    dummy = malloc((n+1)* sizeof(*dummy));
+    block_size = env->M/n;
+
+    #pragma omp parallel shared(n, block_size, dummy)
+    {
+    #pragma omp for 
     for(int i=0; i<env->M; i++){
         for(int j=0; j<env->N; j++){
             env->board[i][j].age++;
@@ -157,38 +163,82 @@ void run_simulation(struct Environment* env){
             env->temp_board[i][j].starve++;
         }
     }
-    // printf("Generation %d, red\n",0);
-    // print_board(env);
 
-    for(int gen = 0; gen<env->generations; ++gen){
+    for(int gen = 0; gen<env->generations; gen++){
         // Update red
-        for(int i=0; i<env->M; i++){
-            for(int j=i%2; j<env->N; j+=2){
-                move_entity(env, i, j);
+        #pragma omp single
+        {
+            for(int k = 0; k<n; k+=2){
+                #pragma omp task  depend(out: dummy[k], dummy[k+1])
+                for(int i=k*block_size; i < (k+1)*block_size; i++){
+                    for(int j=i%2; j<env->N; j+=2){
+                        move_entity(env, i, j);
+                    }
+                }
             }
+            for(int k = 1; k<n; k+=2){
+                #pragma omp task  depend(out: dummy[k], dummy[k+1])
+                for(int i=k*block_size; i < (k+1)*block_size; i++){
+                    for(int j=i%2; j<env->N; j+=2){
+                        move_entity(env, i, j);
+                    }
+                }
+            }
+            #pragma omp task  depend(out: dummy[n])
+            for(int i=n*block_size; i < env->M; i++){
+                for(int j=i%2; j<env->N; j+=2){
+                    move_entity(env, i, j);
+                }
+            }
+        #pragma omp taskwait
         }
+            #pragma omp barrier
+        
         // printf("Red updated\n");
 
+        #pragma omp for 
         for(int i=0; i<env->M; i++){
             for(int j=0; j<env->N; j++)
                 env->board[i][j] = env->temp_board[i][j];
         }
-
         // printf("Generation %d, red\n",gen+1);
         // print_board(env);
         // Update black
-        for(int i=0; i<env->M; i++){
-            for(int j=(i+1)%2; j<env->N; j+=2){
-                move_entity(env, i, j);
-            }
-        }
-        // printf("Updated black\n");
 
-        reset_generation(env);
-        // printf("Generation %d, black\n",gen+1);
-        // print_board(env);
-    }
-    print_results(env);
+        #pragma omp single
+        {
+            for(int k = 0; k<n; k+=2){
+                #pragma omp task  depend(out: dummy[k], dummy[k+1])
+                for(int i=k*block_size; i < (k+1)*block_size; i++){
+                    for(int j=(i+1)%2; j<env->N; j+=2){
+                        move_entity(env, i, j);
+                    }
+                }
+            }
+            for(int k = 1; k<n; k+=2){
+                #pragma omp task  depend(out: dummy[k], dummy[k+1])
+                // #pragma omp for //private(j)
+                for(int i=k*block_size; i < (k+1)*block_size; i++){
+                    for(int j=(i+1)%2; j<env->N; j+=2){
+                        move_entity(env, i, j);
+                    }
+                }
+            }
+            #pragma omp task  depend(out: dummy[n])
+            for(int i=n*block_size; i < env->M; i++){
+                for(int j=(i+1)%2; j<env->N; j+=2){
+                    move_entity(env, i, j);
+                }
+            }
+        #pragma omp taskwait
+        }
+            #pragma omp barrier
+
+        // printf("Updated black\n");
+            
+    reset_generation(env);
+        }
+}
 }
 
 
@@ -210,7 +260,8 @@ int main (int argc, char *argv[])
     run_simulation(&env);
 
     exec_time  += omp_get_wtime();
-    fprintf(stderr, "%.8fs\n", exec_time);
+    print_results(&env);
+    fprintf(stderr, "%.2fs\n", exec_time);
 
     //Free memory
     for (int i = 0; i < env.M; i++) {
