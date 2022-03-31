@@ -22,6 +22,7 @@ for par in params:
             time = float(p.stderr.decode().split("s")[0]) 
             out = p.stdout.decode()
             results[par][name]["time"].append(time)
+            results[par][name]["time"].append(time)
             results[par][name]["stdout"].append(out.strip())
             with open("speedup.json", "w") as f:
                 json.dump(results, f, indent=2)

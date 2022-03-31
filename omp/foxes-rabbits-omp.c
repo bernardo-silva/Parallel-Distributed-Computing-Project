@@ -192,8 +192,6 @@ void run_simulation(struct Environment* env){
             }
         #pragma omp taskwait
         }
-            #pragma omp barrier
-        
         // printf("Red updated\n");
 
         #pragma omp for 
@@ -232,8 +230,6 @@ void run_simulation(struct Environment* env){
             }
         #pragma omp taskwait
         }
-            #pragma omp barrier
-
         // printf("Updated black\n");
             
     reset_generation(env);
