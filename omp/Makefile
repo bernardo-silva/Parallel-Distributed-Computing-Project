@@ -1,5 +1,5 @@
 CC := gcc
-CCFLAGS := -O3 -fopenmp -Wall -g
+CCFLAGS := -O3 -fopenmp -Wall
 INCLUDE := .
 #--- VPATH contains the search path for the src files !
 # VPATH := .
