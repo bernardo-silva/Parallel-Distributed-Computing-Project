@@ -3,6 +3,7 @@ import json
 from collections import defaultdict
 
 N_RUNS = 3 
+OUT_FILE = "speedup1.json"
 
 serial_program = "serial/foxes-rabbits"
 parallel_program = "omp/foxes-rabbits-omp"
@@ -12,17 +13,17 @@ params = ["300 6000 900 8000 200000 7 100000 12 20 9999",
         "20000 1000 800 100000 80000 10 1000 30 8 500",
         "100000 200 500 500 1000 3 600 6 10 1234"]   
 
+
 results = defaultdict(lambda: defaultdict(lambda : defaultdict(list)))
 
-print(results)
 for par in params:
     for version,name in ((serial_program,"serial"), (parallel_program, "omp")):
+        if name == "serial": continue
         for _ in range(N_RUNS):
             p = subprocess.run([version] + par.split(),capture_output=True)
             time = float(p.stderr.decode().split("s")[0]) 
             out = p.stdout.decode()
             results[par][name]["time"].append(time)
-            results[par][name]["time"].append(time)
             results[par][name]["stdout"].append(out.strip())
-            with open("speedup_LAB.json", "w") as f:
+            with open(OUT_FILE, "w") as f:
                 json.dump(results, f, indent=2)
