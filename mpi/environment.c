@@ -19,7 +19,7 @@
     
 #define N_GHOST_LINES(id,p) (!id || id==p-1)? 1:2
 #define BLOCK_LOW_GHOST(id, p, n) (BLOCK_LOW(id,p,n) - ((!id)?0:1))
-#define BLOCK_HIGH_GHOST(id, p, n) (BLOCK_HIGH(id,p,n) + ((id == p-1)?1:0))
+#define BLOCK_HIGH_GHOST(id, p, n) (BLOCK_HIGH(id,p,n) + ((id != p-1)?1:0))
 
 MPI_Datatype MPI_Entity;
 
@@ -90,6 +90,14 @@ void generate_world(Environment* env, char *argv[], int id, int p){
     env->is_not_top = (!id)?0:1;
     env->is_not_bottom = (id == p-1)?0:1;
 
+    // printf("%d with row low %d and high %d\n",
+    //        id,env->row_low,env->row_high);
+    //
+    // printf("%d with block ghost size %d and n_ghost_lines %d\n",
+    //        id,env->block_size_ghost,env->n_ghost_lines);
+    //
+    // printf("%d with row ghots low %d and high %d\n",
+    //        id,env->row_low_ghost,env->row_high_ghost);
     const int nfields = 1;
     const int block_lens[] = {4};
     MPI_Aint displacements[nfields];
@@ -145,7 +153,7 @@ void print_board(Environment* env){
 
     printf("\n");
 
-    for(int i=0; i<env->M; i++){
+    for(int i=0; i<env->block_size_ghost; i++){
         printf("%02d:",i);
         for(int j=0; j<env->N; j++){
             printf(" %c|", animal[env->board[i][j].type]);
@@ -173,7 +181,7 @@ void print_temp_board(Environment* env){
 
 void print_results(Environment* env){
     int rocks=0, rabbits=0, foxes=0;
-    for(int i=0; i<env->M; i++){
+    for(int i=env->is_not_top; i<env->block_size + env->is_not_top; i++){
         for(int j=0; j<env->N; j++){
             if(env->board[i][j].type == ROCK){ rocks++; continue; }
             if(env->board[i][j].type == RABBIT){ rabbits++; continue; }

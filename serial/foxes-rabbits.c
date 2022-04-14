@@ -201,8 +201,8 @@ int main (int argc, char *argv[])
     Environment env;
     generate_world(&env, argv);
 
-    // printf("Generated world\n");
-    // print_board();
+    printf("Generated world\n");
+    print_board(&env);
 
     double exec_time = -omp_get_wtime();
 
