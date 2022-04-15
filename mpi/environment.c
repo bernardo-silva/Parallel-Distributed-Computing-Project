@@ -168,14 +168,16 @@ void print_temp_board(Environment* env){
     printf("-----------------\n");
 }
 
-void print_results(Environment* env){
-    int rocks=0, rabbits=0, foxes=0;
+void get_results(Environment* env, int* rocks, int* rabbits, int* foxes){
+    *rocks=0;
+    *rabbits=0;
+    *foxes=0;
     for(int i=env->is_not_top; i<env->block_size + env->is_not_top; i++){
         for(int j=0; j<env->N; j++){
-            if(env->board[i][j].type == ROCK){ rocks++; continue; }
-            if(env->board[i][j].type == RABBIT){ rabbits++; continue; }
-            if(env->board[i][j].type == FOX){ foxes++; continue; }
+            if(env->board[i][j].type == ROCK){ (*rocks)++; continue; }
+            if(env->board[i][j].type == RABBIT){ (*rabbits)++; continue; }
+            if(env->board[i][j].type == FOX){ (*foxes)++; continue; }
         }
     }
-    printf("%d %d %d\n", rocks, rabbits, foxes);
+    // printf("%d %d %d\n", rocks, rabbits, foxes);
 }

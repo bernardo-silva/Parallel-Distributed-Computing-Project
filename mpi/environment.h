@@ -35,15 +35,27 @@ typedef struct Environment {
 
     int row_low;
     int row_high;
-    int block_size;
+    int column_low;
+    int column_high;
 
-    int n_ghost_lines;
+    int row_block_size;
+    int column_block_size;
+
+    int n_ghost_rows;
+    int n_ghost_columns;
+
     int row_low_ghost;
     int row_high_ghost;
-    int block_size_ghost;
+    int column_low_ghost;
+    int column_high_ghost;
+
+    int row_block_size_ghost;
+    int column_block_size_ghost;
 
     int is_not_bottom;
     int is_not_top;
+    int is_not_right;
+    int is_not_left;
 
     Entity** board;
     Entity** temp_board;
@@ -67,6 +79,6 @@ void print_board( Environment* env);
 
 void print_temp_board( Environment* env);
 
-void print_results( Environment* env);
+void get_results(Environment* env, int* rocks, int* rabbits, int* foxes);
 
 #endif // !ENVIRONMENT

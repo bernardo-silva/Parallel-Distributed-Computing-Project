@@ -254,16 +254,11 @@ void update_generation(Environment* env, int color, Entity* row_below, Entity* r
                       MPI_COMM_WORLD, requests2);
         }
     }
-    // if(env->is_not_top)
-    //     MPI_Wait(requests1 + 2, statuses);
-    // if(env->is_not_bottom)
-    //     MPI_Wait(requests1 + 3, statuses);
     
     recieve_above_below(env, env->temp_board[0], 3,
                         env->temp_board[env->block_size_ghost-1], 2,
                         requests2, 2, 3);
 
-    // MPI_Waitall(env->is_not_top + env->is_not_bottom, requests2 + 2, MPI_STATUS_IGNORE);
     if(env->is_not_top)
         MPI_Wait(requests2 + 2, statuses);
     if(env->is_not_bottom)
@@ -273,8 +268,6 @@ void update_generation(Environment* env, int color, Entity* row_below, Entity* r
 void run_simulation(struct Environment* env){
     // Board -> Static
     // Temp - board -> Edit
-    // printf("%d block_low %d\n",env->id, env->row_low);fflush(stdout);
-    // return;
 
     Entity* row_below = malloc(env->N * sizeof(Entity));
     Entity* row_above = malloc(env->N * sizeof(Entity));
@@ -292,9 +285,6 @@ void run_simulation(struct Environment* env){
     for(int gen = 0; gen<env->generations; ++gen){
         // Update red
         update_generation(env, RED, row_below, row_above);
-        // printf("%d updated red\n",env->id); fflush(stdout);
-        // print_board(env);fflush(stdout);
-        // MPI_Barrier(MPI_COMM_WORLD);
 
         for(int i=0; i<env->block_size_ghost; i++){
             for(int j=0; j<env->N; j++)
@@ -305,13 +295,9 @@ void run_simulation(struct Environment* env){
 
         // Update black
         update_generation(env, BLACK, row_below, row_above);
-        // printf("%d updated red\n",env->id); fflush(stdout);
         MPI_Barrier(MPI_COMM_WORLD);
 
         reset_generation(env);
-        // MPI_Barrier(MPI_COMM_WORLD);
-        // printf("%d end generation %d\n",env->id,gen); fflush(stdout);
-        // print_board(env); fflush(stdout);
     }
     free(row_below);
     free(row_above);
@@ -320,13 +306,27 @@ void run_simulation(struct Environment* env){
 
 int main (int argc, char *argv[])
 {
+    MPI_Comm cart_comm;
     int id, p;
+    int grid_dims[2];
+    grid_dims[0] = grid_dims[1] = 0;
+    int periodic[2];
+    periodic[0] = periodic[1] = 0;
     // MPI_Datatype MPI_Entity;
 
     MPI_Init (&argc, &argv);
 
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
     MPI_Comm_size(MPI_COMM_WORLD, &p);
+
+    MPI_Dims_create(p, 2, grid_dims);
+    MPI_Cart_create(MPI_COMM_WORLD, 2, grid_dims, periodic, 1, &cart_comm);
+
+    if(!id)
+        printf("%d x %d\n", grid_dims[0], grid_dims[1]);
+
+    return 1;
+
 
     if (argc != 11) {
         printf("Incorrect number of parameters\n");
@@ -356,9 +356,19 @@ int main (int argc, char *argv[])
 
     // printf("%d final world!\n",id);
     // print_board(&env);fflush(stdout);
-    print_results(&env);fflush(stdout);
-    if(!env.id)
+    int rocks, rabbits, foxes;
+    int t_rocks=0, t_rabbits=0, t_foxes=0;
+    
+    get_results(&env, &rocks, &rabbits, &foxes);
+
+    MPI_Reduce(&rocks, &t_rocks, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&rabbits, &t_rabbits, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&foxes, &t_foxes, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if(!env.id){
+        printf("%d %d %d\n", t_rocks, t_rabbits, t_foxes);
         fprintf(stderr, "%.8fs\n", exec_time);
+    }
 
     //Free memory
     for (int i = 0; i < env.block_size_ghost; i++) {
