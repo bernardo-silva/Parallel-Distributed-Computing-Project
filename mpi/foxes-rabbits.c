@@ -14,6 +14,7 @@
 #define RED 0
 #define BLACK 1
 
+MPI_Datatype MPI_Entity;
 
 #define BLOCK_LOW(id,p,n) ((id)*(n)/(p))
 #define BLOCK_HIGH(id,p,n) (BLOCK_LOW((id)+1,p,n) - 1)
@@ -56,7 +57,7 @@ int choose_next_pos(struct Environment* env, int (*criteria)(), int i, int j, in
     }
     if(!possible) return 0;
 
-    int choice = (i * env->N + j)%possible;
+    int choice = ((i+env->row_low-env->is_not_top) * env->N + j)%possible;
 
     *k = moves[choice][0];
     *l = moves[choice][1];
@@ -133,7 +134,8 @@ void move_entity(Environment* env, int i, int j){
 
 void merge_rows(Environment* env, int row_index, Entity* row){
     for(int i=0; i<env->N; i++){
-        check_conflict(env, &env->temp_board[row_index][i], &row[i]);
+        if(row[i].type != EMPTY)
+            check_conflict(env, &env->temp_board[row_index][i], &row[i]);
     }
 }
 
@@ -164,8 +166,6 @@ void recieve_above_below(Environment* env, Entity* above, int tag_above, Entity*
                       below, int tag_below, MPI_Request* requests, int
                       request_index_above, int request_index_below){
 
-    extern MPI_Datatype MPI_Entity;
-
     // MPI request ghost line from process above
     if(env->is_not_top)
         MPI_Irecv(above, env->N, MPI_Entity, env->id - 1, tag_above,
@@ -180,45 +180,51 @@ void recieve_above_below(Environment* env, Entity* above, int tag_above, Entity*
 void send_above_below(Environment* env, Entity* above, int tag_above, Entity*
                       below, int tag_below, MPI_Request* requests, int
                       request_index_above, int request_index_below){
-
-    extern MPI_Datatype MPI_Entity;
-    
     if(env->is_not_top){
         MPI_Isend(above, env->N, MPI_Entity, env->id - 1, tag_above,
                   MPI_COMM_WORLD, requests + request_index_above);
-        // printf("%d sent row to id -1\n",env->id);fflush(stdout);
     }
     if(env->is_not_bottom){
         MPI_Isend(below, env->N, MPI_Entity, env->id + 1, tag_below,
                   MPI_COMM_WORLD, requests + request_index_below);
-        // printf("%d sent row to id +1\n",env->id);fflush(stdout);
     }
 }
 
+void empty_ghost_lines(Environment* env){
+    if(env->is_not_top)
+        for(int j=0; j<env->N;j++)
+            env->temp_board[0][j] = (Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+
+    if(env->is_not_bottom)
+        for(int j=0; j<env->N;j++)
+            env->temp_board[env->block_size_ghost - 1][j] = (Entity) {.type =
+                EMPTY, .age=0, .starve=0, .moved=0};
+}
+
 void update_generation(Environment* env, int color, Entity* row_below, Entity* row_above){
-    extern MPI_Datatype MPI_Entity;
+    // extern MPI_Datatype MPI_Entity;
 
     MPI_Request requests1[4];
     MPI_Status statuses[8];
     int index;
+
+    empty_ghost_lines(env);
 
     // MPI recieve ghost line from process above and below
     recieve_above_below(env, row_above, 0, row_below, 1, requests1, 0, env->is_not_top);
 
     // Update block (without updating ghost)
     for(int i=env->is_not_top; i<env->block_size + env->is_not_top; i++){
-        for(int j=(i+color)%2; j<env->N; j+= 2){
+        for(int j=(i+env->row_low+color-env->is_not_top)%2; j<env->N; j+= 2){
             move_entity(env, i, j);
         }
     }
 
-    //Send first and last rows (ghosts) to be updated by other process
     send_above_below(env, env->temp_board[0], 1,
                      env->temp_board[env->block_size_ghost - 1], 0, requests1, 2, 3);
 
     //Wait for any of the recieves
     MPI_Waitany(env->is_not_bottom + env->is_not_top, requests1, &index, statuses);
-    // printf("%d recieved a row with index %d\n",env->id, index);fflush(stdout);
 
     MPI_Request requests2[4];
 
@@ -227,35 +233,31 @@ void update_generation(Environment* env, int color, Entity* row_below, Entity* r
         merge_rows(env, 1, row_above);
         MPI_Isend(env->temp_board[1], env->N, MPI_Entity, env->id - 1, 2,
                   MPI_COMM_WORLD, requests2);
-        // printf("%d: sent merged row to -1\n",env->id);fflush(stdout);
     }
     else{ //Else, it recieved a row from below
         merge_rows(env, env->block_size_ghost - 2, row_below);
         MPI_Isend(env->temp_board[env->block_size_ghost - 2], env->N,
                   MPI_Entity, env->id + 1, 3, MPI_COMM_WORLD, requests2 + 1);
-        // printf("%d: sent merged row to +1\n",env->id);fflush(stdout);
     }
-
-    // printf("%d Merged first row\n",env->id);fflush(stdout);
     
     //If it is a middle block, it needs to wait for the second row
     if(env->is_not_bottom && env->is_not_top){
-        // printf("%d waiting for second row +1\n",env->id);fflush(stdout);
-        MPI_Wait(requests1 + 1-index, &statuses[1-index]);
-        // printf("%d recieved a row with index %d\n",env->id, 1-index);fflush(stdout);
+        MPI_Wait(requests1 + 1-index, statuses + 1-index);
         if(!index){
             merge_rows(env, env->block_size_ghost - 2, row_below);
             MPI_Isend(env->temp_board[env->block_size_ghost - 2], env->N,
                   MPI_Entity, env->id + 1, 3, MPI_COMM_WORLD, requests2 + 1);
-            // printf("%d: sent second merged row to +1\n",env->id);fflush(stdout);
         }
         else{
             merge_rows(env, 1, row_above);
             MPI_Isend(env->temp_board[1], env->N, MPI_Entity, env->id - 1, 2,
                       MPI_COMM_WORLD, requests2);
-            // printf("%d: sent second merged row to -1\n",env->id);fflush(stdout);
         }
     }
+    // if(env->is_not_top)
+    //     MPI_Wait(requests1 + 2, statuses);
+    // if(env->is_not_bottom)
+    //     MPI_Wait(requests1 + 3, statuses);
     
     recieve_above_below(env, env->temp_board[0], 3,
                         env->temp_board[env->block_size_ghost-1], 2,
@@ -266,16 +268,13 @@ void update_generation(Environment* env, int color, Entity* row_below, Entity* r
         MPI_Wait(requests2 + 2, statuses);
     if(env->is_not_bottom)
         MPI_Wait(requests2 + 3, statuses);
-    // printf("%d after recieving row\n",env->id);fflush(stdout);
-    // for(int k=0;k<env->N;k++)
-    //     printf("%d ",env->temp_board[0][k].type);
-    // printf("\n");fflush(stdout);
-    // printf("%d Update finished\n",env->id);fflush(stdout);
 }
 
 void run_simulation(struct Environment* env){
     // Board -> Static
     // Temp - board -> Edit
+    // printf("%d block_low %d\n",env->id, env->row_low);fflush(stdout);
+    // return;
 
     Entity* row_below = malloc(env->N * sizeof(Entity));
     Entity* row_above = malloc(env->N * sizeof(Entity));
@@ -293,22 +292,24 @@ void run_simulation(struct Environment* env){
     for(int gen = 0; gen<env->generations; ++gen){
         // Update red
         update_generation(env, RED, row_below, row_above);
-        printf("%d updated red\n",env->id); fflush(stdout);
-        print_board(env);fflush(stdout);
-        MPI_Barrier(MPI_COMM_WORLD);
+        // printf("%d updated red\n",env->id); fflush(stdout);
+        // print_board(env);fflush(stdout);
+        // MPI_Barrier(MPI_COMM_WORLD);
+
         for(int i=0; i<env->block_size_ghost; i++){
             for(int j=0; j<env->N; j++)
                 env->board[i][j] = env->temp_board[i][j];
         }
-    MPI_Barrier(MPI_COMM_WORLD);
+
+        MPI_Barrier(MPI_COMM_WORLD);
 
         // Update black
         update_generation(env, BLACK, row_below, row_above);
         // printf("%d updated red\n",env->id); fflush(stdout);
-    MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
 
         reset_generation(env);
-    MPI_Barrier(MPI_COMM_WORLD);
+        // MPI_Barrier(MPI_COMM_WORLD);
         // printf("%d end generation %d\n",env->id,gen); fflush(stdout);
         // print_board(env); fflush(stdout);
     }
@@ -320,7 +321,8 @@ void run_simulation(struct Environment* env){
 int main (int argc, char *argv[])
 {
     int id, p;
-    extern MPI_Datatype MPI_Entity;
+    // MPI_Datatype MPI_Entity;
+
     MPI_Init (&argc, &argv);
 
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
@@ -331,11 +333,17 @@ int main (int argc, char *argv[])
         return -1;
     }
 
+    const int nfields = 1;
+    const int block_lens[] = {4};
+    MPI_Aint displacements = offsetof(Entity, type);
+    MPI_Datatype types[] = {MPI_INT}; 
+    MPI_Type_create_struct(nfields, block_lens, &displacements, types, &MPI_Entity);
+    MPI_Type_commit(&MPI_Entity);
+
     Environment env;
     generate_world(&env, argv, id, p);
-
-    printf("%d generated world!\n",id);
-    print_board(&env);fflush(stdout);
+    // printf("%d generated world!\n",id);
+    // print_board(&env);fflush(stdout);
 
 
     MPI_Barrier(MPI_COMM_WORLD);
@@ -346,10 +354,11 @@ int main (int argc, char *argv[])
     MPI_Barrier(MPI_COMM_WORLD);
     exec_time  += MPI_Wtime();
 
-    printf("%d final world!\n",id);
-    print_board(&env);fflush(stdout);
-    print_results(&env);
-    fprintf(stderr, "%.2fs\n", exec_time);
+    // printf("%d final world!\n",id);
+    // print_board(&env);fflush(stdout);
+    print_results(&env);fflush(stdout);
+    if(!env.id)
+        fprintf(stderr, "%.8fs\n", exec_time);
 
     //Free memory
     for (int i = 0; i < env.block_size_ghost; i++) {

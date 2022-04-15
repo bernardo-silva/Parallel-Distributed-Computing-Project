@@ -215,7 +215,7 @@ int main (int argc, char *argv[])
 
     exec_time  += omp_get_wtime();
 
-    // print_board(&env);fflush(stdout);
+    print_board(&env);fflush(stdout);
     print_results(&env);
     fprintf(stderr, "%.2fs\n", exec_time);
 

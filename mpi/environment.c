@@ -21,7 +21,6 @@
 #define BLOCK_LOW_GHOST(id, p, n) (BLOCK_LOW(id,p,n) - ((!id)?0:1))
 #define BLOCK_HIGH_GHOST(id, p, n) (BLOCK_HIGH(id,p,n) + ((id != p-1)?1:0))
 
-MPI_Datatype MPI_Entity;
 
 int position_empty(Environment* env, int i, int j) {
     return env->board[i][j].type == EMPTY;
@@ -98,16 +97,6 @@ void generate_world(Environment* env, char *argv[], int id, int p){
     //
     // printf("%d with row ghots low %d and high %d\n",
     //        id,env->row_low_ghost,env->row_high_ghost);
-    const int nfields = 1;
-    const int block_lens[] = {4};
-    MPI_Aint displacements[nfields];
-    MPI_Datatype types[] = {MPI_INT}; 
-    // MPI_Datatype MPI_Entity;
-
-    displacements[0] = offsetof(Entity, age);
-
-    MPI_Type_create_struct(nfields, block_lens, displacements, types, &MPI_Entity);
-    MPI_Type_commit(&MPI_Entity);
 
     env->board = malloc(sizeof *env->board * env->block_size_ghost);
     env->temp_board = malloc(sizeof *env->board * env->block_size_ghost);
@@ -146,7 +135,7 @@ int kill_fox(Environment* env, int i, int j){
 }
 void print_board(Environment* env){
     char * animal = " *RF";
-    printf("---------------------\n");
+    printf("---------------------\n");fflush(stdout);
     printf("   ");
     for(int j=0; j<env->N; j++)
         printf("%02d|",j);
@@ -156,11 +145,11 @@ void print_board(Environment* env){
     for(int i=0; i<env->block_size_ghost; i++){
         printf("%02d:",i);
         for(int j=0; j<env->N; j++){
-            printf(" %c|", animal[env->board[i][j].type]);
+            printf(" %c|", animal[env->temp_board[i][j].type]);
         }
-        printf("\n");
+        printf("\n");fflush(stdout);
     }
-    printf("---------------------\n");
+    printf("---------------------\n");fflush(stdout);
 }
 
 void print_temp_board(Environment* env){
