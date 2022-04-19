@@ -203,15 +203,14 @@ void empty_ghost_lines(Environment* env){
 
 void update_generation(Environment* env, int color, Entity* row_below, Entity* row_above){
     // extern MPI_Datatype MPI_Entity;
-
-    MPI_Request requests1[4];
-    MPI_Status statuses[8];
+    MPI_Request requests1[4] = {[0 ... 3] = MPI_REQUEST_NULL};
+    MPI_Request requests2[4] = {[0 ... 3] = MPI_REQUEST_NULL};
     int index;
 
     empty_ghost_lines(env);
-
+    
     // MPI recieve ghost line from process above and below
-    recieve_above_below(env, row_above, 0, row_below, 1, requests1, 0, env->is_not_top);
+    recieve_above_below(env, row_above, 0, row_below, 1, requests1, 0, 1);
 
     // Update block (without updating ghost)
     for(int i=env->is_not_top; i<env->block_size + env->is_not_top; i++){
@@ -223,46 +222,27 @@ void update_generation(Environment* env, int color, Entity* row_below, Entity* r
     send_above_below(env, env->temp_board[0], 1,
                      env->temp_board[env->block_size_ghost - 1], 0, requests1, 2, 3);
 
-    //Wait for any of the recieves
-    MPI_Waitany(env->is_not_bottom + env->is_not_top, requests1, &index, statuses);
-
-    MPI_Request requests2[4];
-
-    //If index is 0 and it is not top block, it recieved a row from above
-    if (!index && env->is_not_top){
-        merge_rows(env, 1, row_above);
-        MPI_Isend(env->temp_board[1], env->N, MPI_Entity, env->id - 1, 2,
-                  MPI_COMM_WORLD, requests2);
-    }
-    else{ //Else, it recieved a row from below
-        merge_rows(env, env->block_size_ghost - 2, row_below);
-        MPI_Isend(env->temp_board[env->block_size_ghost - 2], env->N,
-                  MPI_Entity, env->id + 1, 3, MPI_COMM_WORLD, requests2 + 1);
-    }
-    
-    //If it is a middle block, it needs to wait for the second row
-    if(env->is_not_bottom && env->is_not_top){
-        MPI_Wait(requests1 + 1-index, statuses + 1-index);
-        if(!index){
-            merge_rows(env, env->block_size_ghost - 2, row_below);
-            MPI_Isend(env->temp_board[env->block_size_ghost - 2], env->N,
-                  MPI_Entity, env->id + 1, 3, MPI_COMM_WORLD, requests2 + 1);
-        }
-        else{
-            merge_rows(env, 1, row_above);
-            MPI_Isend(env->temp_board[1], env->N, MPI_Entity, env->id - 1, 2,
-                      MPI_COMM_WORLD, requests2);
-        }
-    }
-    
     recieve_above_below(env, env->temp_board[0], 3,
                         env->temp_board[env->block_size_ghost-1], 2,
                         requests2, 2, 3);
 
-    if(env->is_not_top)
-        MPI_Wait(requests2 + 2, statuses);
-    if(env->is_not_bottom)
-        MPI_Wait(requests2 + 3, statuses);
+    for(int k=0; k<env->is_not_bottom+env->is_not_top;k++){
+        //Wait for any of the recieves
+        MPI_Waitany(2, requests1, &index, MPI_STATUS_IGNORE);
+        //If index is 0, it recieved a row from above
+        if (!index){
+            merge_rows(env, 1, row_above);
+            MPI_Isend(env->temp_board[1], env->N, MPI_Entity, env->id - 1, 2,
+                      MPI_COMM_WORLD, requests2);
+        }
+        else{ //Else, it recieved a row from below
+            merge_rows(env, env->block_size_ghost - 2, row_below);
+            MPI_Isend(env->temp_board[env->block_size_ghost - 2], env->N,
+                      MPI_Entity, env->id + 1, 3, MPI_COMM_WORLD, requests2 + 1);
+        }
+    }
+
+    MPI_Waitall(2, requests2+2, MPI_STATUS_IGNORE);
 }
 
 void run_simulation(struct Environment* env){
@@ -295,6 +275,7 @@ void run_simulation(struct Environment* env){
 
         // Update black
         update_generation(env, BLACK, row_below, row_above);
+
         MPI_Barrier(MPI_COMM_WORLD);
 
         reset_generation(env);

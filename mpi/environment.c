@@ -57,12 +57,81 @@ void generate_element(Environment* env, int n, char atype, uint32_t *seed)
 	j = env->N * r4_uni(seed);
 
         if (i >= env->row_low_ghost && i <= env->row_high_ghost)
-	if(position_empty(env, i-env->row_low_ghost, j))
-	    insert_animal(env, i-env->row_low_ghost, j, atype);
+        if (j >= env->column_low_ghost && j <= env->column_high_ghost)
+	if(position_empty(env, i-env->row_low_ghost, j-env->column_low_ghost))
+	    insert_animal(env, i-env->row_low_ghost, j-env->column_low_ghost, atype);
     }
 }
 
-void generate_world(Environment* env, char *argv[], int id, int p){
+void get_block_dimentions(Environment* env){
+    env->row_low  = BLOCK_LOW(env->coords[0], env->grid_dims[0], env->M);
+    env->row_high = BLOCK_HIGH(env->coords[0], env->grid_dims[0], env->M);
+
+    env->column_low  = BLOCK_LOW(env->coords[1], env->grid_dims[1], env->N);
+    env->column_high = BLOCK_HIGH(env->coords[1], env->grid_dims[1], env->N);
+
+    env->row_block_size    = BLOCK_SIZE(env->coords[0], env->grid_dims[0], env->M);
+    env->column_block_size = BLOCK_SIZE(env->coords[1], env->grid_dims[1], env->N);
+
+    env->n_ghost_rows    = N_GHOST_LINES(env->coords[0], env->grid_dims[0]);
+    env->n_ghost_columns = N_GHOST_LINES(env->coords[1], env->grid_dims[1]);
+
+    env->row_low_ghost  = BLOCK_LOW_GHOST(env->coords[0], env->grid_dims[0], env->M);
+    env->row_high_ghost = BLOCK_HIGH_GHOST(env->coords[0], env->grid_dims[0], env->M);
+    env->column_low_ghost  = BLOCK_LOW_GHOST(env->coords[1], env->grid_dims[1], env->N);
+    env->column_high_ghost = BLOCK_HIGH_GHOST(env->coords[1], env->grid_dims[1], env->N);
+
+    env->row_block_size_ghost    = env->row_block_size    + env->n_ghost_rows;
+    env->column_block_size_ghost = env->column_block_size + env->n_ghost_columns;
+}
+
+void get_neigs_ids(Environment* env){
+    int neig_coords[2];
+    neig_coords[0] = env->coords[0];
+    neig_coords[1] = env->coords[1];
+
+    if(env->is_not_top){
+        neig_coords[0] = env->coords[0]-1;
+        neig_coords[1] = env->coords[1];
+        MPI_Cart_rank(env->cart_comm, neig_coords, &env->neigs_ids[0]);
+    }
+    if(env->is_not_bottom){
+        neig_coords[0] = env->coords[0]+1;
+        neig_coords[1] = env->coords[1];
+        MPI_Cart_rank(env->cart_comm, neig_coords, &env->neigs_ids[1]);
+    }
+    if(env->is_not_left){
+        neig_coords[0] = env->coords[0];
+        neig_coords[1] = env->coords[1]-1;
+        MPI_Cart_rank(env->cart_comm, neig_coords, &env->neigs_ids[2]);
+    }
+    if(env->is_not_right){
+        neig_coords[0] = env->coords[0];
+        neig_coords[1] = env->coords[1]+1;
+        MPI_Cart_rank(env->cart_comm, neig_coords, &env->neigs_ids[3]);
+    }
+}
+
+void create_datatypes(Environment* env){
+    extern MPI_Datatype MPI_Entity;
+
+    const int nfields = 1;
+    const int block_lens[] = {4};
+    MPI_Aint displacements = offsetof(Entity, type);
+    MPI_Datatype types[] = {MPI_INT}; 
+    MPI_Type_create_struct(nfields, block_lens, &displacements, types, &MPI_Entity);
+    MPI_Type_commit(&MPI_Entity);
+
+    // extern MPI_Datatype MPI_Column;
+    // MPI_Type_vector(env->row_block_size_ghost, 1, env->column_block_size_ghost,
+    //                 MPI_Entity, &MPI_Column);
+    // MPI_Type_commit(&MPI_Column);
+}
+
+
+
+void generate_world(Environment* env, char *argv[], int id, int p, int*
+                    grid_dims, MPI_Comm cart_comm){
     env->generations      = atoi(argv[1]);
     env->M                = atoi(argv[2]);
     env->N                = atoi(argv[3]);
@@ -74,40 +143,37 @@ void generate_world(Environment* env, char *argv[], int id, int p){
     env->foxes_starvation = atoi(argv[9]);
     env->seed             = atoi(argv[10]);
 
+    env->cart_comm = cart_comm;
     env->id = id;
     env->p = p;
+    env->grid_dims[0] = grid_dims[0];
+    env->grid_dims[1] = grid_dims[1];
+    MPI_Cart_coords(cart_comm, id, 2, env->coords);
 
-    env->row_low = BLOCK_LOW(id, p, env->M);
-    env->row_high = BLOCK_HIGH(id, p, env->M);
-    env->block_size = BLOCK_SIZE(id, p, env->M);
-
-    env->n_ghost_lines = N_GHOST_LINES(id, p);
-    env->row_low_ghost = BLOCK_LOW_GHOST(id, p, env->M);
-    env->row_high_ghost = BLOCK_HIGH_GHOST(id, p, env->M);
-    env->block_size_ghost = env->block_size + env->n_ghost_lines;
+    get_block_dimentions(env);
     
-    env->is_not_top = (!id)?0:1;
-    env->is_not_bottom = (id == p-1)?0:1;
+    env->is_not_top = (!env->coords[0])?0:1;
+    env->is_not_bottom = (env->coords[0] == env->grid_dims[0]-1)?0:1;
+    env->is_not_left = (!env->coords[1])?0:1;
+    env->is_not_right = (env->coords[1] == env->grid_dims[1]-1)?0:1;
 
-    // printf("%d with row low %d and high %d\n",
-    //        id,env->row_low,env->row_high);
-    //
-    // printf("%d with block ghost size %d and n_ghost_lines %d\n",
-    //        id,env->block_size_ghost,env->n_ghost_lines);
-    //
-    // printf("%d with row ghots low %d and high %d\n",
-    //        id,env->row_low_ghost,env->row_high_ghost);
+    env->n_neigs = env->is_not_top + env->is_not_bottom + env->is_not_left +
+        env->is_not_right;
 
-    env->board = malloc(sizeof *env->board * env->block_size_ghost);
-    env->temp_board = malloc(sizeof *env->board * env->block_size_ghost);
+    get_neigs_ids(env);
+    create_datatypes(env);
 
-    for (int i=0;i<env->block_size_ghost;i++){
-        env->board[i] = malloc(env->N * sizeof(Entity));
-        env->temp_board[i] = malloc(env->N * sizeof(Entity));
+    env->board = (Entity**) malloc(sizeof(Entity*) * env->row_block_size_ghost);
+    env->temp_board = (Entity**) malloc(sizeof(Entity*) * env->row_block_size_ghost);
+
+    for (int i=0;i<env->row_block_size_ghost;i++){
+        env->board[i] = (Entity*) malloc(env->column_block_size_ghost * sizeof(Entity));
+        env->temp_board[i] = (Entity*) malloc(env->column_block_size_ghost * sizeof(Entity));
     }
 
-    for (int i=0;i<env->block_size_ghost;i++){
-        for (int j=0;j<env->N;j++){
+
+    for (int i=0;i<env->row_block_size_ghost;i++){
+        for (int j=0;j<env->column_block_size_ghost;j++){
             env->board[i][j].type = EMPTY;
             env->board[i][j].age = 0;
             env->board[i][j].starve = 0;
@@ -122,7 +188,6 @@ void generate_world(Environment* env, char *argv[], int id, int p){
     generate_element(env, env->n_rocks, ROCK, &env->seed);
     generate_element(env, env->n_rabbits, RABBIT, &env->seed);
     generate_element(env, env->n_foxes, FOX, &env->seed);
-
 }
 
 int kill_fox(Environment* env, int i, int j){
@@ -137,14 +202,14 @@ void print_board(Environment* env){
     char * animal = " *RF";
     printf("---------------------\n");fflush(stdout);
     printf("   ");
-    for(int j=0; j<env->N; j++)
+    for(int j=0; j<env->column_block_size_ghost; j++)
         printf("%02d|",j);
 
     printf("\n");
 
-    for(int i=0; i<env->block_size_ghost; i++){
+    for(int i=0; i<env->row_block_size_ghost; i++){
         printf("%02d:",i);
-        for(int j=0; j<env->N; j++){
+        for(int j=0; j<env->column_block_size_ghost; j++){
             printf(" %c|", animal[env->temp_board[i][j].type]);
         }
         printf("\n");fflush(stdout);
@@ -154,9 +219,9 @@ void print_board(Environment* env){
 
 void print_temp_board(Environment* env){
     printf("-----------------\n");
-    for(int i=0; i<env->M; i++){
+    for(int i=0; i<env->row_block_size_ghost; i++){
         printf("|");
-        for(int j=0; j<env->N; j++){
+        for(int j=0; j<env->column_block_size_ghost; j++){
             printf(" %c %d %d %d|",
                    env->temp_board[i][j].type,
                    env->temp_board[i][j].age,
@@ -172,8 +237,8 @@ void get_results(Environment* env, int* rocks, int* rabbits, int* foxes){
     *rocks=0;
     *rabbits=0;
     *foxes=0;
-    for(int i=env->is_not_top; i<env->block_size + env->is_not_top; i++){
-        for(int j=0; j<env->N; j++){
+    for(int i=env->is_not_top; i<env->row_block_size + env->is_not_top; i++){
+        for(int j=env->is_not_left; j<env->column_block_size + env->is_not_left; j++){
             if(env->board[i][j].type == ROCK){ (*rocks)++; continue; }
             if(env->board[i][j].type == RABBIT){ (*rabbits)++; continue; }
             if(env->board[i][j].type == FOX){ (*foxes)++; continue; }

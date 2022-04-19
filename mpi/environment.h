@@ -6,10 +6,10 @@
 #include <stdint.h>
 #include <mpi.h>
 
-#define EMPTY  0//' '
-#define ROCK   1//'*'
-#define RABBIT 2//'R'
-#define FOX    3//'F'
+#define EMPTY  0
+#define ROCK   1
+#define RABBIT 2
+#define FOX    3
 
 typedef struct Entity{
     int type;
@@ -30,8 +30,12 @@ typedef struct Environment {
     int foxes_starvation;
     uint32_t seed;
 
+    MPI_Comm cart_comm;
     int id;
     int p;
+    int grid_dims[2];
+    int coords[2];
+    int neigs_ids[4];
 
     int row_low;
     int row_high;
@@ -56,6 +60,7 @@ typedef struct Environment {
     int is_not_top;
     int is_not_right;
     int is_not_left;
+    int n_neigs;
 
     Entity** board;
     Entity** temp_board;
@@ -65,13 +70,8 @@ int position_empty(Environment* env, int i, int j);
 
 int position_rabbit(Environment* env, int i, int j);
 
-void insert_animal(Environment* env, int i, int j, char atype);
-
-float r4_uni(uint32_t *seed);
-
-void generate_element(Environment* env, int n, char atype, uint32_t *seed) ;
-
-void generate_world(Environment* env, char *argv[], int id, int p);
+void generate_world(Environment* env, char *argv[], int id, int p, int*
+                    grid_dims, MPI_Comm cart_comm);
 
 int kill_fox(Environment* env, int i, int j);
 
