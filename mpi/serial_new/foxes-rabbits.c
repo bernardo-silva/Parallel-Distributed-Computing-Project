@@ -186,6 +186,7 @@ void run_simulation(struct Environment* env){
                 env->board[i][j] = env->temp_board[i][j];
 
         }
+        print_board(env);
 
         // Update black
         update_generation(env, BLACK);
@@ -215,7 +216,7 @@ int main (int argc, char *argv[])
 
     exec_time  += omp_get_wtime();
 
-    print_board(&env);fflush(stdout);
+    // print_board(&env);fflush(stdout);
     print_results(&env);
     fprintf(stderr, "%.2fs\n", exec_time);
 

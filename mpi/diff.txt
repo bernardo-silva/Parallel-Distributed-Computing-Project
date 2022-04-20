@@ -1,0 +1,341 @@
+5,6d4
+< #include <mpi.h>
+< 
+8c6,7
+< #include "mpi_utils.h"
+---
+> 
+> #include <mpi.h>
+18,22d16
+< #define UP 0
+< #define DOWN 1
+< #define LEFT 2
+< #define RIGHT 3
+< 
+25,27c19,24
+< int choose_next_pos(struct Environment* env, int (*criteria)(), int i, int j, int* k, int* l){
+<     int up = i>0?-1:0;
+<     int down = i<env->row_block_size_ghost-1?1:0;
+---
+> #define BLOCK_LOW(id,p,n) ((id)*(n)/(p))
+> #define BLOCK_HIGH(id,p,n) (BLOCK_LOW((id)+1,p,n) - 1)
+> #define BLOCK_SIZE(id,p,n) \
+>   (BLOCK_HIGH(id,p,n) - BLOCK_LOW(id,p,n) + 1)
+> #define BLOCK_OWNER(index,p,n) \
+> (((p)*((index)+1)-1)/(n)) 
+28a26,27
+> 
+> int choose_next_pos(struct Environment* env, int (*criteria)(), int i, int j, int* k, int* l){
+30c29,32
+<     int right = j<env->column_block_size_ghost-1?1:0;
+---
+>     int right = j<env->N-1?1:0;
+> 
+>     int up = i>0?-1:0;
+>     int down = i<env->block_size_ghost-1?1:0;
+34a37
+> 
+57,60c60
+< 
+<     int choice;
+<     choice = ((i+env->row_low-env->is_not_top) * env->N +
+<         j+env->column_low-env->is_not_left) % possible;
+---
+>     int choice = ((i+env->row_low-env->is_not_top) * env->N + j)%possible;
+136c136
+<     for(int i=env->is_not_left; i<env->column_block_size+env->is_not_left; i++){
+---
+>     for(int i=0; i<env->N; i++){
+142,148d141
+< void merge_columns(Environment* env, int col_index, Entity* col){
+<     for(int i=env->is_not_top; i<env->row_block_size+env->is_not_top; i++){
+<         if(col[i].type != EMPTY)
+<             check_conflict(env, &env->temp_board[i][col_index], &col[i]);
+<     }
+< }
+< 
+150,151c143,144
+<     for(int i=0; i<env->row_block_size_ghost; i++){
+<         for(int j=0; j<env->column_block_size_ghost; j++){
+---
+>     for(int i=0; i<env->block_size_ghost; i++){
+>         for(int j=0; j<env->N; j++){
+172,175c165,178
+< void update_generation(Environment* env, int color, 
+<                        Entity* row_below, Entity* row_above,
+<                        Entity* column_left, Entity* column_right,
+<                        Entity* column_left_send, Entity* column_right_send){
+---
+> void recieve_above_below(Environment* env, Entity* above, int tag_above, Entity*
+>                       below, int tag_below, MPI_Request* requests, int
+>                       request_index_above, int request_index_below){
+> 
+>     // MPI request ghost line from process above
+>     if(env->is_not_top)
+>         MPI_Irecv(above, env->N, MPI_Entity, env->id - 1, tag_above,
+>                   MPI_COMM_WORLD, requests + request_index_above);
+> 
+>     // MPI request ghost line from process below
+>     if(env->is_not_bottom)
+>         MPI_Irecv(below, env->N, MPI_Entity, env->id + 1, tag_below,
+>                   MPI_COMM_WORLD, requests + request_index_below);
+> }
+177,178c180,207
+<     MPI_Request requests1[8] = {[0 ... 7] = MPI_REQUEST_NULL};
+<     MPI_Request requests2[8] = {[0 ... 7] = MPI_REQUEST_NULL};
+---
+> void send_above_below(Environment* env, Entity* above, int tag_above, Entity*
+>                       below, int tag_below, MPI_Request* requests, int
+>                       request_index_above, int request_index_below){
+>     if(env->is_not_top){
+>         MPI_Isend(above, env->N, MPI_Entity, env->id - 1, tag_above,
+>                   MPI_COMM_WORLD, requests + request_index_above);
+>     }
+>     if(env->is_not_bottom){
+>         MPI_Isend(below, env->N, MPI_Entity, env->id + 1, tag_below,
+>                   MPI_COMM_WORLD, requests + request_index_below);
+>     }
+> }
+> 
+> void empty_ghost_lines(Environment* env){
+>     if(env->is_not_top)
+>         for(int j=0; j<env->N;j++)
+>             env->temp_board[0][j] = (Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
+> 
+>     if(env->is_not_bottom)
+>         for(int j=0; j<env->N;j++)
+>             env->temp_board[env->block_size_ghost - 1][j] = (Entity) {.type =
+>                 EMPTY, .age=0, .starve=0, .moved=0};
+> }
+> 
+> void update_generation(Environment* env, int color, Entity* row_below, Entity* row_above){
+>     // extern MPI_Datatype MPI_Entity;
+>     MPI_Request requests1[4] = {[0 ... 3] = MPI_REQUEST_NULL};
+>     MPI_Request requests2[4] = {[0 ... 3] = MPI_REQUEST_NULL};
+183,185c212,213
+<     // MPI recieve ghost line from neighbor processes
+<     recieve_from_neigs(env, row_above, UP, row_below, DOWN, column_left,
+<                        LEFT, column_right, RIGHT, requests1, 0, 1, 2, 3);
+---
+>     // MPI recieve ghost line from process above and below
+>     recieve_above_below(env, row_above, 0, row_below, 1, requests1, 0, 1);
+188,190c216,217
+<     for(int i=env->is_not_top; i<env->row_block_size + env->is_not_top; i++){
+<         int start = (i+color+env->row_low-env->is_not_top)%2; 
+<         for(int j=start; j<env->column_block_size+env->is_not_left; j+= 2){
+---
+>     for(int i=env->is_not_top; i<env->block_size + env->is_not_top; i++){
+>         for(int j=(i+env->row_low+color-env->is_not_top)%2; j<env->N; j+= 2){
+195,196c222,223
+<     //Convert columns to rows to be able to send
+<     columns_to_rows(env, column_left_send, column_right_send);
+---
+>     send_above_below(env, env->temp_board[0], 1,
+>                      env->temp_board[env->block_size_ghost - 1], 0, requests1, 2, 3);
+198,246c225,241
+<     send_to_neigs(env, 
+<                   env->temp_board[0], DOWN,
+<                   env->temp_board[env->row_block_size_ghost - 1], UP, 
+<                   column_left_send, RIGHT,
+<                   column_right_send, LEFT,
+<                   requests1, 4, 5, 6, 7);
+< 
+<     recieve_from_neigs(env,
+<                        env->temp_board[0], 21,
+<                        env->temp_board[env->row_block_size_ghost-1], 20,
+<                        column_left_send, 23,
+<                        column_right_send, 22,
+<                        requests2, 4, 5, 6, 7);
+< 
+<     for(int k=0; k<env->n_neigs; k++){
+<         MPI_Waitany(4, requests1, &index, MPI_STATUS_IGNORE);
+<         switch (index) {
+<             case UP:{
+<                 merge_rows(env, 1, row_above);
+<                 MPI_Send(env->temp_board[1], env->column_block_size_ghost,
+<                           MPI_Entity, env->neigs_ids[UP], 20, env->cart_comm);//, requests2);
+<                 break;
+<             }
+<             case DOWN:{
+<                 merge_rows(env, env->row_block_size_ghost - 2, row_below);
+<                 MPI_Isend(env->temp_board[env->row_block_size_ghost - 2],
+<                           env->column_block_size_ghost, MPI_Entity,
+<                           env->neigs_ids[DOWN], 21, env->cart_comm, requests2 + 1);
+<                 break;
+<             }
+<             case LEFT:{
+<                 merge_columns(env, 1, column_left);
+<                 column_to_row(env, 1, column_left);
+<                 MPI_Send(column_left, env->row_block_size_ghost,
+<                           MPI_Entity, env->neigs_ids[LEFT], 22, env->cart_comm);//,
+<                           // requests2 + 2);
+<                 break;
+<             }
+<             case RIGHT:{
+<                 merge_columns(env, env->column_block_size_ghost-2, column_right);
+<                 column_to_row(env, env->column_block_size_ghost-2, column_right);
+<                 MPI_Send(column_right, env->row_block_size_ghost,
+<                           MPI_Entity, env->neigs_ids[RIGHT], 23,
+<                           env->cart_comm);//, requests2 + 3);
+<                 break;
+<             }
+<             case MPI_UNDEFINED:{
+<                 printf("%d: Error undefined request\n",env->id);fflush(stdout);
+<             }
+---
+>     recieve_above_below(env, env->temp_board[0], 3,
+>                         env->temp_board[env->block_size_ghost-1], 2,
+>                         requests2, 2, 3);
+> 
+>     for(int k=0; k<env->is_not_bottom+env->is_not_top;k++){
+>         //Wait for any of the recieves
+>         MPI_Waitany(2, requests1, &index, MPI_STATUS_IGNORE);
+>         //If index is 0, it recieved a row from above
+>         if (!index){
+>             merge_rows(env, 1, row_above);
+>             MPI_Isend(env->temp_board[1], env->N, MPI_Entity, env->id - 1, 2,
+>                       MPI_COMM_WORLD, requests2);
+>         }
+>         else{ //Else, it recieved a row from below
+>             merge_rows(env, env->block_size_ghost - 2, row_below);
+>             MPI_Isend(env->temp_board[env->block_size_ghost - 2], env->N,
+>                       MPI_Entity, env->id + 1, 3, MPI_COMM_WORLD, requests2 + 1);
+249,254d243
+<     // MPI_Waitall(4, requests1 + 4, MPI_STATUS_IGNORE);
+<     
+<     // printf("%d === %d %d %d %d\n", env->id, requests1[4] == MPI_REQUEST_NULL,
+<     //        requests1[5] == MPI_REQUEST_NULL, requests1[6] == MPI_REQUEST_NULL,
+<     //        requests1[7] == MPI_REQUEST_NULL);fflush(stdout);
+<     // MPI_Waitall(8, requests1, MPI_STATUS_IGNORE);
+256,258c245
+<     MPI_Waitall(8, requests2, MPI_STATUS_IGNORE);
+< 
+<     rows_to_columns(env, column_left_send, column_right_send);
+---
+>     MPI_Waitall(2, requests2+2, MPI_STATUS_IGNORE);
+264,265d250
+<     Entity* row_below = malloc(env->column_block_size_ghost * sizeof(Entity));
+<     Entity* row_above = malloc(env->column_block_size_ghost * sizeof(Entity));
+267,270c252,253
+<     Entity* column_left  = malloc(env->row_block_size_ghost * sizeof(Entity));
+<     Entity* column_right = malloc(env->row_block_size_ghost * sizeof(Entity));
+<     Entity* column_left_send  = malloc(env->row_block_size_ghost * sizeof(Entity));
+<     Entity* column_right_send = malloc(env->row_block_size_ghost * sizeof(Entity));
+---
+>     Entity* row_below = malloc(env->N * sizeof(Entity));
+>     Entity* row_above = malloc(env->N * sizeof(Entity));
+273,274c256,257
+<     for(int i=0; i<env->row_block_size_ghost; i++){
+<         for(int j=0; j<env->column_block_size_ghost; j++){
+---
+>     for(int i=0; i<env->block_size_ghost; i++){
+>         for(int j=0; j<env->N; j++){
+282d264
+<     // printf("%d starting to update\n",env->id);fflush(stdout);
+285,287c267
+<         update_generation(env, RED, row_below, row_above,
+<                           column_left, column_right,
+<                           column_left_send, column_right_send);
+---
+>         update_generation(env, RED, row_below, row_above);
+289,290c269,270
+<         for(int i=0; i<env->row_block_size_ghost; i++){
+<             for(int j=0; j<env->column_block_size_ghost; j++)
+---
+>         for(int i=0; i<env->block_size_ghost; i++){
+>             for(int j=0; j<env->N; j++)
+293,296d272
+<         // if(env->id<2)
+<         // printf("%d updated red\n",env->id);fflush(stdout);
+<         // if(env->id<2)
+<         // print_board(env);fflush(stdout);
+298c274
+<         MPI_Barrier(env->cart_comm);
+---
+>         MPI_Barrier(MPI_COMM_WORLD);
+301,303c277
+<         update_generation(env, BLACK, row_below, row_above,
+<                           column_left, column_right,
+<                           column_left_send, column_right_send);
+---
+>         update_generation(env, BLACK, row_below, row_above);
+305c279
+<         MPI_Barrier(env->cart_comm);//WHYYYY????
+---
+>         MPI_Barrier(MPI_COMM_WORLD);
+308,311d281
+<         // if(env->id<2)
+<         // printf("%d updated red\n",env->id);fflush(stdout);
+<         // if(env->id<2)
+<         // print_board(env);fflush(stdout);
+315,318d284
+<     free(column_left);
+<     free(column_right);
+<     free(column_left_send);
+<     free(column_right_send);
+324d289
+<     MPI_Comm cart_comm;
+326,329d290
+<     int grid_dims[2];
+<     grid_dims[0] = grid_dims[1] = 0;
+<     int periodic[2];
+<     periodic[0] = periodic[1] = 0;
+337,339d297
+<     MPI_Dims_create(p, 2, grid_dims);
+<     MPI_Cart_create(MPI_COMM_WORLD, 2, grid_dims, periodic, 1, &cart_comm);
+< 
+344a303,309
+>     const int nfields = 1;
+>     const int block_lens[] = {4};
+>     MPI_Aint displacements = offsetof(Entity, type);
+>     MPI_Datatype types[] = {MPI_INT}; 
+>     MPI_Type_create_struct(nfields, block_lens, &displacements, types, &MPI_Entity);
+>     MPI_Type_commit(&MPI_Entity);
+> 
+346,347c311
+<     generate_world(&env, argv, id, p, grid_dims, cart_comm);
+<     // if(env.id<2)
+---
+>     generate_world(&env, argv, id, p);
+348a313
+>     // print_board(&env);fflush(stdout);
+350,364d314
+<     // if(env.id<2){
+<     // print_board(&env);fflush(stdout); }
+<     // printf("%d is not %d %d %d %d\n",env.id,
+<     //        env.is_not_top,
+<     //        env.is_not_bottom,
+<     //        env.is_not_left,
+<     //        env.is_not_right);
+<     // printf("%d has neigs %d %d %d %d\n",env.id, env.neigs_ids[0],
+<     //        env.neigs_ids[1], env.neigs_ids[2], env.neigs_ids[3]);
+<     // printf("%d has row low %d and column low %d \n",env.id, env.row_low,
+<     //        env.column_low);
+<     // fflush(stdout);
+< 
+< 
+<     MPI_Barrier(env.cart_comm);
+365a316
+>     MPI_Barrier(MPI_COMM_WORLD);
+370c321
+<     MPI_Barrier(env.cart_comm);
+---
+>     MPI_Barrier(MPI_COMM_WORLD);
+379,380d329
+<     printf("%d: %d %d %d\n",env.id, rocks, rabbits, foxes);
+<     MPI_Barrier(env.cart_comm);
+382,384c331,333
+<     MPI_Reduce(&rocks, &t_rocks, 1, MPI_INT, MPI_SUM, 0, env.cart_comm);
+<     MPI_Reduce(&rabbits, &t_rabbits, 1, MPI_INT, MPI_SUM, 0, env.cart_comm);
+<     MPI_Reduce(&foxes, &t_foxes, 1, MPI_INT, MPI_SUM, 0, env.cart_comm);
+---
+>     MPI_Reduce(&rocks, &t_rocks, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+>     MPI_Reduce(&rabbits, &t_rabbits, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+>     MPI_Reduce(&foxes, &t_foxes, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+391,392d339
+<     printf("%d generated world!\n",id);
+<     print_board(&env);fflush(stdout);
+394c341
+<     for (int i = 0; i < env.row_block_size_ghost; i++) {
+---
+>     for (int i = 0; i < env.block_size_ghost; i++) {

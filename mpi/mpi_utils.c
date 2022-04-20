@@ -51,24 +51,26 @@ void send_to_neigs(Environment* env,
                         int idx_above, int idx_below, int idx_left, int idx_right
                         ){
     if(env->is_not_top)
-        MPI_Send(above, env->column_block_size_ghost, MPI_Entity,
-                  env->neigs_ids[UP], tag_above, env->cart_comm) ;
-                  // requests + idx_above);
+        MPI_Isend(above, env->column_block_size_ghost, MPI_Entity,
+                  env->neigs_ids[UP], tag_above, env->cart_comm,
+                  requests + idx_above);
     
     if(env->is_not_bottom)
-        MPI_Send(below, env->column_block_size_ghost, MPI_Entity,
-                  env->neigs_ids[DOWN], tag_below, env->cart_comm);
-                  // requests + idx_below);
+        MPI_Isend(below, env->column_block_size_ghost, MPI_Entity,
+                  env->neigs_ids[DOWN], tag_below, env->cart_comm,
+                  requests + idx_below);
 
-    if(env->is_not_left)
-        MPI_Send(left, env->row_block_size_ghost, MPI_Entity,
-                  env->neigs_ids[LEFT], tag_left, env->cart_comm);
-                  // requests + idx_left);
+    if(env->is_not_left){
+        MPI_Isend(left, env->row_block_size_ghost, MPI_Entity,
+                  env->neigs_ids[LEFT], tag_left, env->cart_comm,
+                  requests + idx_left);
+
+    }
     
     if(env->is_not_right)
-        MPI_Send(right, env->row_block_size_ghost, MPI_Entity,
-                  env->neigs_ids[RIGHT], tag_right, env->cart_comm);
-                  // requests + idx_right);
+        MPI_Isend(right, env->row_block_size_ghost, MPI_Entity,
+                  env->neigs_ids[RIGHT], tag_right, env->cart_comm,
+                  requests + idx_right);
     
 }
 

@@ -56,8 +56,7 @@ int choose_next_pos(struct Environment* env, int (*criteria)(), int i, int j, in
 
 
     int choice;
-    choice = ((i+env->row_low-env->is_not_top) * env->N +
-        j+env->column_low-env->is_not_left) % possible;
+    choice = ((i+env->row_low_ghost)*env->N + j+env->column_low_ghost) % possible;
 
     *k = moves[choice][0];
     *l = moves[choice][1];
@@ -128,7 +127,7 @@ void move_entity(Environment* env, int i, int j){
         //Otherwise, leave empty entity behind
         env->temp_board[i][j] = (Entity) {.type = EMPTY, .age=0, .starve=0, .moved=0};
     }
-
+    
     check_conflict(env, &env->temp_board[k][l], &new);
 }
 
@@ -184,10 +183,9 @@ void update_generation(Environment* env, int color,
     recieve_from_neigs(env, row_above, UP, row_below, DOWN, column_left,
                        LEFT, column_right, RIGHT, requests1, 0, 1, 2, 3);
 
-    // Update block (without updating ghost)
     for(int i=env->is_not_top; i<env->row_block_size + env->is_not_top; i++){
-        int start = (i+color+env->row_low-env->is_not_top)%2; 
-        for(int j=start; j<env->column_block_size+env->is_not_left; j+= 2){
+        int start = (i+color+env->row_low_ghost)%2 != (env->column_low%2) ; 
+        for(int j=start+env->is_not_left; j<env->column_block_size+env->is_not_left; j+= 2){
             move_entity(env, i, j);
         }
     }
@@ -246,14 +244,8 @@ void update_generation(Environment* env, int color,
             }
         }
     }
-    // MPI_Waitall(4, requests1 + 4, MPI_STATUS_IGNORE);
-    
-    // printf("%d === %d %d %d %d\n", env->id, requests1[4] == MPI_REQUEST_NULL,
-    //        requests1[5] == MPI_REQUEST_NULL, requests1[6] == MPI_REQUEST_NULL,
-    //        requests1[7] == MPI_REQUEST_NULL);fflush(stdout);
-    // MPI_Waitall(8, requests1, MPI_STATUS_IGNORE);
 
-    MPI_Waitall(8, requests2, MPI_STATUS_IGNORE);
+    MPI_Waitall(4, requests2+4, MPI_STATUS_IGNORE);
 
     rows_to_columns(env, column_left_send, column_right_send);
 }
@@ -278,30 +270,28 @@ void run_simulation(struct Environment* env){
             env->temp_board[i][j].starve++;
         }
     }
-
-    // printf("%d starting to update\n",env->id);fflush(stdout);
     for(int gen = 0; gen<env->generations; ++gen){
         // Update red
         update_generation(env, RED, row_below, row_above,
                           column_left, column_right,
                           column_left_send, column_right_send);
-        // printf("%d updated red\n",env->id);fflush(stdout);
 
         for(int i=0; i<env->row_block_size_ghost; i++){
             for(int j=0; j<env->column_block_size_ghost; j++)
                 env->board[i][j] = env->temp_board[i][j];
         }
 
-        MPI_Barrier(env->cart_comm);
+        // MPI_Barrier(env->cart_comm);
 
         // Update black
         update_generation(env, BLACK, row_below, row_above,
                           column_left, column_right,
                           column_left_send, column_right_send);
 
-        MPI_Barrier(env->cart_comm);//WHYYYY????
+        // MPI_Barrier(env->cart_comm);//WHYYYY????
 
         reset_generation(env);
+        // MPI_Barrier(env->cart_comm);//WHYYYY????
     }
     free(row_below);
     free(row_above);
@@ -337,17 +327,6 @@ int main (int argc, char *argv[])
 
     Environment env;
     generate_world(&env, argv, id, p, grid_dims, cart_comm);
-    // printf("%d generated world!\n",id); print_board(&env);fflush(stdout); printf("%d is not %d %d %d %d\n",env.id, 
-    //        env.is_not_top,
-    //        env.is_not_bottom,
-    //        env.is_not_left,
-    //        env.is_not_right);
-    // printf("%d has neigs %d %d %d %d\n",env.id, env.neigs_ids[0],
-    //        env.neigs_ids[1], env.neigs_ids[2], env.neigs_ids[3]);
-    printf("%d has row low %d and column low %d \n",env.id, env.row_low,
-           env.column_low);
-    fflush(stdout);
-
 
     MPI_Barrier(env.cart_comm);
 
@@ -358,13 +337,10 @@ int main (int argc, char *argv[])
     MPI_Barrier(env.cart_comm);
     exec_time  += MPI_Wtime();
 
-    // printf("%d final world!\n",id);
-    // print_board(&env);fflush(stdout);
     int rocks, rabbits, foxes;
     int t_rocks=0, t_rabbits=0, t_foxes=0;
     
     get_results(&env, &rocks, &rabbits, &foxes);
-    printf("%d: %d %d %d\n",env.id, rocks, rabbits, foxes);
     MPI_Barrier(env.cart_comm);
 
     MPI_Reduce(&rocks, &t_rocks, 1, MPI_INT, MPI_SUM, 0, env.cart_comm);
@@ -376,8 +352,6 @@ int main (int argc, char *argv[])
         fprintf(stderr, "%.8fs\n", exec_time);
     }
 
-    printf("%d generated world!\n",id);
-    print_board(&env);fflush(stdout);
     //Free memory
     for (int i = 0; i < env.row_block_size_ghost; i++) {
         free(env.board[i]);
@@ -387,6 +361,8 @@ int main (int argc, char *argv[])
     free(env.temp_board);
 
     MPI_Type_free(&MPI_Entity);
+    MPI_Comm_free(&cart_comm);
+    MPI_Comm_free(&env.cart_comm);
     MPI_Finalize();
     return 0;
 }

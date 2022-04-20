@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 #include <omp.h>
 #include <mpi.h>
@@ -17,7 +15,7 @@
 #define BLOCK_OWNER(index,p,n) \
 (((p)*((index)+1)-1)/(n)) 
     
-#define N_GHOST_LINES(id,p) (!id || id==p-1)? 1:2
+// #define N_GHOST_LINES(coord,dim) (!coord || id==p-1)? 1:2
 #define BLOCK_LOW_GHOST(id, p, n) (BLOCK_LOW(id,p,n) - ((!id)?0:1))
 #define BLOCK_HIGH_GHOST(id, p, n) (BLOCK_HIGH(id,p,n) + ((id != p-1)?1:0))
 
@@ -73,8 +71,8 @@ void get_block_dimentions(Environment* env){
     env->row_block_size    = BLOCK_SIZE(env->coords[0], env->grid_dims[0], env->M);
     env->column_block_size = BLOCK_SIZE(env->coords[1], env->grid_dims[1], env->N);
 
-    env->n_ghost_rows    = N_GHOST_LINES(env->coords[0], env->grid_dims[0]);
-    env->n_ghost_columns = N_GHOST_LINES(env->coords[1], env->grid_dims[1]);
+    env->n_ghost_rows    = env->is_not_top + env->is_not_bottom;
+    env->n_ghost_columns = env->is_not_left + env->is_not_right;
 
     env->row_low_ghost  = BLOCK_LOW_GHOST(env->coords[0], env->grid_dims[0], env->M);
     env->row_high_ghost = BLOCK_HIGH_GHOST(env->coords[0], env->grid_dims[0], env->M);
@@ -150,7 +148,6 @@ void generate_world(Environment* env, char *argv[], int id, int p, int*
     env->grid_dims[1] = grid_dims[1];
     MPI_Cart_coords(cart_comm, id, 2, env->coords);
 
-    get_block_dimentions(env);
     
     env->is_not_top = (!env->coords[0])?0:1;
     env->is_not_bottom = (env->coords[0] == env->grid_dims[0]-1)?0:1;
@@ -159,6 +156,8 @@ void generate_world(Environment* env, char *argv[], int id, int p, int*
 
     env->n_neigs = env->is_not_top + env->is_not_bottom + env->is_not_left +
         env->is_not_right;
+
+    get_block_dimentions(env);
 
     get_neigs_ids(env);
     create_datatypes(env);
@@ -210,7 +209,7 @@ void print_board(Environment* env){
     for(int i=0; i<env->row_block_size_ghost; i++){
         printf("%02d:",i);
         for(int j=0; j<env->column_block_size_ghost; j++){
-            printf(" %c|", animal[env->temp_board[i][j].type]);
+            printf(" %c|", animal[env->board[i][j].type]);
         }
         printf("\n");fflush(stdout);
     }
@@ -218,19 +217,22 @@ void print_board(Environment* env){
 }
 
 void print_temp_board(Environment* env){
-    printf("-----------------\n");
+    char * animal = " *RF";
+    printf("---------------------\n");fflush(stdout);
+    printf("   ");
+    for(int j=0; j<env->column_block_size_ghost; j++)
+        printf("%02d|",j);
+
+    printf("\n");
+
     for(int i=0; i<env->row_block_size_ghost; i++){
-        printf("|");
+        printf("%02d:",i);
         for(int j=0; j<env->column_block_size_ghost; j++){
-            printf(" %c %d %d %d|",
-                   env->temp_board[i][j].type,
-                   env->temp_board[i][j].age,
-                   env->temp_board[i][j].starve,
-                   env->temp_board[i][j].moved);
+            printf(" %c|", animal[env->temp_board[i][j].type]);
         }
-        printf("\n");
+        printf("\n");fflush(stdout);
     }
-    printf("-----------------\n");
+    printf("---------------------\n");fflush(stdout);
 }
 
 void get_results(Environment* env, int* rocks, int* rabbits, int* foxes){
